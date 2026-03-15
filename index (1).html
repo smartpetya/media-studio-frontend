@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Media Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #08090d; --surface: #0e1117; --surface2: #141820;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
+  --accent: #e8ff47; --accent2: #47c2ff; --accent3: #ff6b6b;
+  --text: #f0f2f5; --text2: #8892a4; --text3: #4a5568; --green: #3ddc84;
+  --mono: 'JetBrains Mono', monospace; --sans: 'Manrope', sans-serif; --display: 'Syne', sans-serif;
+}
+html, body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+.app { min-height:100vh; background: var(--bg); background-image: radial-gradient(ellipse 100% 60% at 50% -10%, rgba(232,255,71,0.04) 0%, transparent 70%), radial-gradient(ellipse 60% 40% at 90% 50%, rgba(71,194,255,0.03) 0%, transparent 60%); }
+
+/* Header */
+.header { height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 28px; border-bottom:1px solid var(--border); background:rgba(8,9,13,0.9); backdrop-filter:blur(20px); position:sticky; top:0; z-index:200; }
+.logo { font-family:var(--display); font-size:15px; font-weight:800; letter-spacing:-0.03em; display:flex; align-items:center; gap:8px; cursor:pointer; }
+.logo-dot { width:8px; height:8px; background:var(--accent); border-radius:50%; box-shadow:0 0 12px var(--accent); }
+.step-nav { display:flex; gap:4px; }
+.step-btn { font-family:var(--mono); font-size:11px; font-weight:500; padding:6px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; transition:all 0.2s; background:none; color:var(--text3); }
+.step-btn.active { background:rgba(232,255,71,0.08); border-color:rgba(232,255,71,0.25); color:var(--accent); }
+.step-btn.done { color:var(--text2); border-color:var(--border); }
+.step-btn:disabled { opacity:0.3; cursor:not-allowed; }
+.header-right { display:flex; gap:8px; align-items:center; }
+
+/* Main */
+.main { max-width:960px; margin:0 auto; padding:40px 24px 80px; }
+.section-tag { font-family:var(--mono); font-size:11px; color:var(--accent); letter-spacing:0.1em; margin-bottom:8px; }
+.section-title { font-family:var(--display); font-size:28px; font-weight:800; letter-spacing:-0.03em; }
+.section-sub { font-size:14px; color:var(--text2); margin-top:8px; line-height:1.6; }
+.section-head { margin-bottom:32px; }
+
+/* Cards & inputs */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; margin-bottom:16px; }
+.card-label { font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:0.1em; color:var(--text3); text-transform:uppercase; margin-bottom:10px; }
+.input, .textarea, .select { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-family:var(--sans); font-size:14px; padding:12px 16px; outline:none; transition:border-color 0.2s; resize:vertical; }
+.input:focus, .textarea:focus { border-color:var(--border2); }
+.input::placeholder, .textarea::placeholder { color:var(--text3); }
+select.select option { background:var(--surface2); }
+.tip { font-size:12px; color:var(--text3); line-height:1.6; padding:10px 14px; background:rgba(255,255,255,0.03); border-left:2px solid var(--accent); border-radius:0 8px 8px 0; margin-top:8px; }
+
+/* Buttons */
+.btn-primary { background:var(--accent); color:#08090d; border:none; border-radius:10px; padding:12px 24px; font-family:var(--display); font-size:14px; font-weight:700; cursor:pointer; transition:all 0.2s; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.btn-primary:hover { background:#f5ff80; transform:translateY(-1px); }
+.btn-primary:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+.btn-ghost { background:none; border:1px solid var(--border); color:var(--text2); border-radius:8px; padding:8px 14px; font-family:var(--sans); font-size:12px; cursor:pointer; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px; }
+.btn-ghost:hover { border-color:var(--border2); color:var(--text); }
+.btn-accent2 { background:rgba(71,194,255,0.1); border:1px solid rgba(71,194,255,0.25); color:var(--accent2); border-radius:8px; padding:8px 14px; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s; }
+.btn-accent2:hover { background:rgba(71,194,255,0.18); }
+.btn-accent2:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-danger { background:rgba(255,107,107,0.1); border:1px solid rgba(255,107,107,0.2); color:var(--accent3); border-radius:8px; padding:8px 14px; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.btn-back { background:none; border:1px solid var(--border); color:var(--text3); border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s; font-family:var(--sans); }
+.btn-back:hover { border-color:var(--border2); color:var(--text2); }
+
+/* Layout */
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.settings-bar { background:rgba(14,17,23,0.95); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:28px; display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; }
+.settings-field { display:flex; flex-direction:column; gap:6px; flex:1; min-width:140px; }
+
+/* Act & Scene */
+.act-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:12px; }
+.act-header { display:flex; align-items:center; gap:12px; padding:16px 20px; cursor:pointer; user-select:none; }
+.act-num { font-family:var(--mono); font-size:11px; color:var(--accent); background:rgba(232,255,71,0.08); border:1px solid rgba(232,255,71,0.2); border-radius:6px; padding:4px 8px; }
+.act-title { font-family:var(--display); font-size:15px; font-weight:700; flex:1; }
+.act-desc { font-size:12px; color:var(--text2); margin-top:2px; }
+.scene-row { border-top:1px solid var(--border); padding:20px; display:grid; gap:16px; }
+.scene-number { font-family:var(--mono); font-size:10px; color:var(--text3); letter-spacing:0.08em; }
+
+/* Prompt blocks */
+.prompt-block { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:16px; }
+.prompt-block-label { font-family:var(--mono); font-size:10px; letter-spacing:0.08em; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.dot-char { width:6px; height:6px; border-radius:50%; display:inline-block; }
+
+/* Badges */
+.badge { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:20px; }
+.badge-wait { background:rgba(255,255,255,0.05); color:var(--text3); }
+.badge-running { background:rgba(232,255,71,0.1); color:var(--accent); }
+.badge-done { background:rgba(61,220,132,0.1); color:var(--green); }
+.badge-error { background:rgba(255,107,107,0.1); color:var(--accent3); }
+.badge-video { background:rgba(71,194,255,0.1); color:var(--accent2); }
+
+/* Gen step */
+.gen-scene { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:12px; display:flex; gap:20px; align-items:flex-start; }
+.gen-preview { width:80px; height:80px; border-radius:10px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--text3); }
+.gen-preview img { width:100%; height:100%; object-fit:cover; }
+.progress-bar { height:3px; background:var(--surface2); border-radius:2px; overflow:hidden; margin-top:8px; }
+.progress-fill { height:100%; border-radius:2px; transition:width 0.5s ease; }
+
+/* Export */
+.export-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
+.export-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:24px; text-align:center; }
+.export-card-icon { font-size:32px; margin-bottom:10px; }
+.export-card-title { font-family:var(--display); font-size:15px; font-weight:700; margin-bottom:4px; }
+.export-card-sub { font-size:12px; color:var(--text2); }
+
+/* Log */
+.log-panel { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:24px; max-height:200px; overflow-y:auto; }
+.log-line { font-family:var(--mono); font-size:11px; color:var(--text3); line-height:1.9; }
+.log-line.accent { color:var(--accent); } .log-line.green { color:var(--green); } .log-line.red { color:var(--accent3); }
+
+/* Status bar */
+.status-bar { display:flex; gap:8px; align-items:center; padding:8px 14px; background:var(--surface); border:1px solid var(--border); border-radius:10px; margin-bottom:20px; font-size:12px; }
+.status-dot { width:8px; height:8px; border-radius:50%; }
+.status-dot.on { background:var(--green); box-shadow:0 0 6px var(--green); }
+.status-dot.off { background:var(--accent3); }
+
+/* Projects list */
+.projects-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin-bottom:24px; }
+.project-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; cursor:pointer; transition:all 0.2s; position:relative; }
+.project-card:hover { border-color:var(--border2); transform:translateY(-2px); }
+.project-card-title { font-family:var(--display); font-size:16px; font-weight:700; margin-bottom:6px; }
+.project-card-meta { font-size:12px; color:var(--text3); font-family:var(--mono); }
+.project-card-topic { font-size:13px; color:var(--text2); margin-top:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.project-card-status { position:absolute; top:16px; right:16px; }
+.project-delete { position:absolute; bottom:16px; right:16px; background:none; border:none; color:var(--text3); cursor:pointer; font-size:14px; opacity:0; transition:opacity 0.2s; padding:4px 8px; }
+.project-card:hover .project-delete { opacity:1; }
+.project-delete:hover { color:var(--accent3); }
+
+/* Video controls */
+.video-controls { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.video-preview { width:120px; height:68px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; }
+.video-preview video { width:100%; height:100%; object-fit:cover; }
+
+/* Animations */
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+.spin { animation:spin 1s linear infinite; display:inline-block; }
+.fade-in { animation:fadeIn 0.4s ease; }
+.pulse { animation:pulse 1.5s ease-in-out infinite; }
+
+/* Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(12px); display:flex; align-items:center; justify-content:center; z-index:999; padding:20px; }
+.modal-box { background:var(--surface); border:1px solid var(--border2); border-radius:20px; padding:32px; width:100%; max-width:480px; }
+
+@media (max-width:640px) {
+  .two-col, .grid2, .export-grid { grid-template-columns:1fr; }
+  .settings-bar { flex-direction:column; }
+  .step-btn { padding:6px 8px; font-size:10px; }
+  .header { padding:0 12px; }
+  .main { padding:24px 12px 60px; }
+  .gen-scene { flex-direction:column; }
+  .projects-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════════════════════════
+const API_BASE = localStorage.getItem('media_studio_api') || 'https://media-studio-backend-production.up.railway.app';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════════
+const state = {
+  step: 'home', // home | scenario | scenes | generate | export
+  apiStatus: { claude: false, gemini: false, elevenlabs: false },
+  scenario: null,
+  acts: [],
+  style: 'cinematic',
+  aspectRatio: '9:16',
+  language: 'ru',
+  log: [],
+  // Project management
+  projectId: null,
+  projects: [],
+  projectsLoading: false,
+  // Video
+  videoProvider: 'auto',
+  videoProviders: [],
+};
+
+const NEGATIVE_BASE = 'blurry, out of focus, low quality, jpeg artifacts, watermark, text overlay, signature, extra limbs, distorted face, bad anatomy, disfigured, duplicate, overexposed, underexposed, flat lighting, ugly, deformed';
+
+const STYLE_TAGS = {
+  cinematic: 'shot on ARRI Alexa, anamorphic 2.39:1, film grain, shallow depth of field, cinematic lighting',
+  realistic: 'shot on Sony A7R5, 85mm f/1.4, photorealistic, 8K, ultra sharp, professional photography',
+  anime: 'anime key visual, studio quality illustration, vibrant colors, detailed linework',
+  oil_painting: 'oil painting on canvas, impressionist technique, rich impasto, museum quality',
+  watercolor: 'watercolor illustration, soft wet edges, paper texture, artistic',
+  digital_art: 'digital concept art, ArtStation trending, cinematic composition, volumetric lighting',
+};
+
+const CAMERA_OPTS = [
+  ['slow_zoom_in','Зум в'],['slow_zoom_out','Зум из'],['pan_left','Пан влево'],['pan_right','Пан вправо'],
+  ['tilt_up','Подъём'],['tilt_down','Спуск'],['ken_burns','Ken Burns'],['parallax','Параллакс'],['static','Статика']
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// API HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+async function api(path, body) {
+  const res = await fetch(API_BASE + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'API error');
+  return json;
+}
+
+async function apiPatch(path, body) {
+  const res = await fetch(API_BASE + path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'API error');
+  return json;
+}
+
+async function apiDelete(path) {
+  const res = await fetch(API_BASE + path, { method: 'DELETE' });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'API error');
+  return json;
+}
+
+function addLog(msg, type = '') {
+  const t = new Date().toLocaleTimeString();
+  state.log.push({ msg, type, t });
+  if (state.log.length > 80) state.log.shift();
+  renderLog();
+}
+
+function genId() { return Math.random().toString(36).slice(2, 8); }
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
+
+// Cost tracking
+let sessionCosts = null;
+async function fetchCosts() {
+  try {
+    const res = await api('/api/costs');
+    sessionCosts = res.costs;
+  } catch (_) {}
+}
+
+function makeScene(actId, idx) {
+  return { id: genId(), actId, index: idx, duration: 5, voiceScript: '', hasCharacter: true,
+    characterDesc: '', environmentDesc: '', cameraMove: 'slow_zoom_in',
+    promptStart: '', promptEnd: '', negativePrompt: NEGATIVE_BASE,
+    character: null, environment: null,
+    imageStartUrl: null, imageEndUrl: null, audioUrl: null, videoUrl: null,
+    videoTaskId: null, videoProvider: null, videoStatus: null,
+    status: 'idle', error: null };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RENDER ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const h = (tag, cls, html, attrs = {}) => {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (html !== undefined && html !== null) el.innerHTML = html;
+  Object.entries(attrs).forEach(([k, v]) => {
+    if (k === 'onclick' || k === 'onchange' || k === 'oninput') el[k] = v;
+    else if (k === 'disabled' && v) el.disabled = true;
+    else el.setAttribute(k, v);
+  });
+  return el;
+};
+
+function render() {
+  const app = $('app');
+  app.innerHTML = '';
+  app.appendChild(renderHeader());
+  const main = h('div', 'main');
+  if (state.step === 'home') main.appendChild(renderHome());
+  else if (state.step === 'scenario') main.appendChild(renderScenario());
+  else if (state.step === 'scenes') main.appendChild(renderScenes());
+  else if (state.step === 'generate') main.appendChild(renderGenerate());
+  else if (state.step === 'export') main.appendChild(renderExport());
+  app.appendChild(main);
+}
+
+// ── HEADER ──
+function renderHeader() {
+  const header = h('header', 'header');
+  const logoEl = h('div', 'logo', '<div class="logo-dot"></div>MEDIA STUDIO', {
+    onclick: () => { state.step = 'home'; render(); }
+  });
+  header.appendChild(logoEl);
+
+  if (state.step !== 'home') {
+    const nav = h('nav', 'step-nav');
+    const steps = [['scenario','01 Сценарий'],['scenes','02 Сцены'],['generate','03 Генерация'],['export','04 Экспорт']];
+    steps.forEach(([key, label]) => {
+      const available = key === 'scenario' || (key === 'scenes' && state.scenario) || (key === 'generate' && state.acts.length) || (key === 'export' && state.acts.some(a => a.scenes.some(s => s.status === 'done')));
+      const btn = h('button', `step-btn${state.step === key ? ' active' : available ? ' done' : ''}`, label, {
+        onclick: () => { if (available) { state.step = key; render(); } },
+        disabled: !available
+      });
+      nav.appendChild(btn);
+    });
+    header.appendChild(nav);
+  }
+
+  const rightDiv = h('div', 'header-right');
+  if (sessionCosts) {
+    const costEl = h('span', '', `💰 $${sessionCosts.total.toFixed(3)}`, {
+      style: 'font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer',
+      onclick: showCostsModal
+    });
+    rightDiv.appendChild(costEl);
+  }
+  if (state.projectId) {
+    const saveBtn = h('button', 'btn-ghost', '💾 Сохранить', { onclick: saveProject });
+    rightDiv.appendChild(saveBtn);
+  }
+  const settingsBtn = h('button', 'btn-ghost', '⚙ backend', { onclick: showSettingsModal });
+  rightDiv.appendChild(settingsBtn);
+  header.appendChild(rightDiv);
+  return header;
+}
+
+// ── SETTINGS MODAL ──
+function showSettingsModal() {
+  const overlay = h('div', 'modal-overlay', null, { onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const box = h('div', 'modal-box');
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div style="font-family:var(--display);font-size:18px;font-weight:800">Backend URL</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div class="card-label">URL бэкенда</div>
+    <input class="input" id="settings-url" value="${API_BASE}" placeholder="https://media-studio-backend.onrender.com">
+    <div class="tip" style="margin-bottom:20px">Вставь URL из Railway/Render после деплоя бэкенда. API ключи хранятся там в Environment Variables.</div>
+    <div id="api-status-check" style="margin-bottom:16px"></div>
+    <div style="display:flex;gap:12px">
+      <button class="btn-primary" style="flex:1;justify-content:center" onclick="saveSettings()">Сохранить</button>
+      <button class="btn-ghost" onclick="checkBackend()">Проверить</button>
+    </div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+window.saveSettings = function() {
+  const url = $('settings-url')?.value?.trim();
+  if (url) { localStorage.setItem('media_studio_api', url); location.reload(); }
+};
+
+window.checkBackend = async function() {
+
+// ── COSTS MODAL ──
+function showCostsModal() {
+  if (!sessionCosts) return;
+  const c = sessionCosts;
+  const overlay = h('div', 'modal-overlay', null, { onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const box = h('div', 'modal-box');
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div style="font-family:var(--display);font-size:18px;font-weight:800">💰 Расходы (сессия)</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;gap:12px">
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🎨 Фото (${c.imageCount} шт)</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.images.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🧠 Сценарий (${c.scenarioCount})</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.scenario.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">✍️ Промпты (${c.promptCount})</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.prompts.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🎙 Озвучка (${c.voiceChars} символов)</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.voice.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🎬 Видео (${c.videoSec} сек)</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.video.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px;background:rgba(232,255,71,0.05);border:1px solid rgba(232,255,71,0.2);border-radius:10px;font-weight:700">
+        <span>ИТОГО</span>
+        <span style="color:var(--accent);font-family:var(--mono);font-size:16px">$${c.total.toFixed(3)}</span>
+      </div>
+    </div>
+    <div class="tip" style="margin-top:16px">Примерные расценки: Gemini image 2K ~$0.135, Claude ~$0.02, ElevenLabs ~$0.30/1000 символов. Расходы считаются с момента запуска сервера.</div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+window.checkBackend = async function() {
+  const url = $('settings-url')?.value?.trim();
+  const el = $('api-status-check');
+  if (!el) return;
+  el.innerHTML = '<span style="color:var(--accent)">Проверяю...</span>';
+  try {
+    const res = await fetch(url + '/api/status');
+    const json = await res.json();
+    if (json.success) {
+      const apis = json.apis;
+      el.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px">
+        ${['claude','gemini','elevenlabs','supabase','kling','runway','veo'].map(k =>
+          `<span><span class="status-dot ${apis[k] ? 'on' : 'off'}" style="display:inline-block;width:8px;height:8px;border-radius:50%"></span> ${k} ${apis[k] ? '✓' : '✗'}</span>`
+        ).join('')}</div>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--accent3)">❌ Не удалось подключиться: ${e.message}</span>`;
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 0: HOME — PROJECT LIST
+// ══════════════════════════════════════════════════════════════════════════════
+function renderHome() {
+  const wrap = h('div', 'fade-in');
+  let html = `
+    <div class="section-head">
+      <div class="section-tag">// ПРОЕКТЫ</div>
+      <h1 class="section-title">AI Media Studio</h1>
+      <p class="section-sub">Выбери существующий проект или создай новый</p>
+    </div>
+    <div style="margin-bottom:24px">
+      <button class="btn-primary" onclick="newProject()">✦ Новый проект</button>
+    </div>`;
+
+  if (state.projectsLoading) {
+    html += '<div style="text-align:center;padding:40px;color:var(--text3)"><span class="spin">◌</span> Загружаю проекты...</div>';
+  } else if (state.projects.length === 0) {
+    html += `<div class="card" style="text-align:center;padding:48px">
+      <div style="font-size:40px;margin-bottom:16px">🎬</div>
+      <div style="color:var(--text2);font-size:14px">Нет проектов. Создай первый!</div>
+    </div>`;
+  } else {
+    html += '<div class="projects-grid">';
+    state.projects.forEach(p => {
+      const date = new Date(p.updated_at || p.created_at).toLocaleDateString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+      const statusMap = { scenario:'📝 Сценарий', scenes:'🎭 Сцены', generating:'⚡ Генерация', done:'✅ Готово' };
+      html += `<div class="project-card" onclick="loadProject('${p.id}')">
+        <div class="project-card-status"><span class="badge badge-${p.status === 'done' ? 'done' : 'wait'}">${statusMap[p.status] || p.status}</span></div>
+        <div class="project-card-title">${esc(p.title || 'Без названия')}</div>
+        <div class="project-card-meta">${date} · ${p.style || 'cinematic'} · ${p.aspect_ratio || '9:16'}</div>
+        <div class="project-card-topic">${esc(p.topic || '')}</div>
+        <button class="project-delete" onclick="event.stopPropagation();deleteProject('${p.id}')">🗑</button>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  wrap.innerHTML = html;
+  return wrap;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+window.newProject = function() {
+  state.projectId = null;
+  state.scenario = null;
+  state.acts = [];
+  state.log = [];
+  state.step = 'scenario';
+  render();
+};
+
+window.loadProject = async function(id) {
+  try {
+    addLog('📂 Загружаю проект...', 'accent');
+    const res = await api(`/api/projects/${id}`);
+    state.projectId = id;
+    const p = res.project;
+    state.style = p.style || 'cinematic';
+    state.aspectRatio = p.aspect_ratio || '9:16';
+    state.language = p.language || 'ru';
+    state.scenario = p.plan ? { topic: p.topic, competitors: p.competitors, vector: p.vector, plan: p.plan } : null;
+    state.acts = res.acts || [];
+    // Determine which step to show
+    if (state.acts.length && state.acts.some(a => a.scenes?.some(s => s.status === 'done'))) {
+      state.step = 'export';
+    } else if (state.acts.length && state.acts.some(a => a.scenes?.some(s => s.promptStart))) {
+      state.step = 'generate';
+    } else if (state.acts.length) {
+      state.step = 'scenes';
+    } else if (state.scenario) {
+      state.step = 'scenario';
+    } else {
+      state.step = 'scenario';
+    }
+    addLog('✅ Проект загружен', 'green');
+    render();
+  } catch (e) {
+    addLog('❌ ' + e.message, 'red');
+    alert('Ошибка загрузки: ' + e.message);
+  }
+};
+
+window.deleteProject = async function(id) {
+  if (!confirm('Удалить проект? Все данные будут потеряны.')) return;
+  try {
+    await apiDelete(`/api/projects/${id}`);
+    state.projects = state.projects.filter(p => p.id !== id);
+    if (state.projectId === id) { state.projectId = null; state.scenario = null; state.acts = []; }
+    render();
+  } catch (e) { alert('Ошибка: ' + e.message); }
+};
+
+async function loadProjects() {
+  state.projectsLoading = true;
+  render();
+  try {
+    const res = await api('/api/projects');
+    state.projects = res.projects || [];
+  } catch (e) {
+    console.error('Load projects:', e.message);
+    state.projects = [];
+  }
+  state.projectsLoading = false;
+  render();
+}
+
+async function saveProject() {
+  try {
+    if (!state.projectId) {
+      // Create new project
+      const res = await api('/api/projects', {
+        title: state.scenario?.plan?.title || 'Без названия',
+        topic: state.scenario?.topic || '',
+        competitors: state.scenario?.competitors || '',
+        vector: state.scenario?.vector || '',
+        style: state.style,
+        aspect_ratio: state.aspectRatio,
+        language: state.language,
+        plan: state.scenario?.plan || null,
+        status: state.step
+      });
+      state.projectId = res.project.id;
+      addLog('💾 Проект создан', 'green');
+    } else {
+      // Update project
+      await apiPatch(`/api/projects/${state.projectId}`, {
+        title: state.scenario?.plan?.title || 'Без названия',
+        style: state.style,
+        aspect_ratio: state.aspectRatio,
+        language: state.language,
+        plan: state.scenario?.plan || null,
+        status: state.step
+      });
+      addLog('💾 Проект обновлён', 'green');
+    }
+    // Save scenes
+    if (state.acts.length && state.projectId) {
+      await api(`/api/projects/${state.projectId}/save-scenes`, { acts: state.acts });
+      addLog('💾 Сцены сохранены', 'green');
+    }
+  } catch (e) {
+    addLog('❌ Сохранение: ' + e.message, 'red');
+    alert('Ошибка сохранения: ' + e.message);
+  }
+}
+
+async function loadVideoProviders() {
+  try {
+    const res = await api('/api/video-providers');
+    state.videoProviders = res.providers || [];
+  } catch (e) { console.log('Video providers:', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 1: SCENARIO
+// ══════════════════════════════════════════════════════════════════════════════
+function renderScenario() {
+  const wrap = h('div', 'fade-in');
+  wrap.innerHTML = `
+    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='home';render()">← Проекты</button></div>
+    <div class="section-head">
+      <div class="section-tag">// ЭТАП 01</div>
+      <h1 class="section-title">Сценарий</h1>
+      <p class="section-sub">Главный агент разобьёт тему на акты с визуальным направлением</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Тема видео *</div>
+      <textarea class="textarea" id="inp-topic" rows="3" placeholder="Например: история создания Apple — от гаража до триллиона">${state.scenario?.topic || ''}</textarea>
+      <div class="tip">Можно вставить текст конкурента — агент адаптирует структуру</div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-label">Конкурент / Референс</div><textarea class="textarea" id="inp-comp" rows="4" placeholder="URL видео или транскрипт">${state.scenario?.competitors || ''}</textarea></div>
+      <div class="card"><div class="card-label">Вектор / Настроение</div><textarea class="textarea" id="inp-vector" rows="4" placeholder="Вдохновляющее и кинематографичное...">${state.scenario?.vector || ''}</textarea></div>
+    </div>
+    <div class="settings-bar">
+      <div class="settings-field"><div class="card-label">Актов</div><select class="select" id="inp-acts">${[2,3,4,5,6,7].map(n => `<option value="${n}" ${n===4?'selected':''}>${n} актов</option>`).join('')}</select></div>
+      <div class="settings-field"><div class="card-label">Сцен на акт</div><select class="select" id="inp-scenes">${[2,3,4,5,6].map(n => `<option value="${n}" ${n===3?'selected':''}>${n} сцены</option>`).join('')}</select></div>
+      <button class="btn-primary" id="btn-gen-scenario" onclick="genScenario()">Сгенерировать сценарий →</button>
+    </div>
+    <div id="scenario-error"></div>
+    ${state.scenario ? renderScenarioPreview() : ''}
+  `;
+  return wrap;
+}
+
+function renderScenarioPreview() {
+  const p = state.scenario.plan;
+  return `<div class="card" style="border-color:rgba(232,255,71,0.15);background:rgba(232,255,71,0.03)">
+    <div class="card-label" style="color:var(--accent)">${esc(p.title)}</div>
+    <div style="color:var(--text2);font-size:13px;margin-bottom:12px">${esc(p.logline)}</div>
+    ${p.acts.map(a => `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <span class="act-num">ACT ${a.id}</span> <strong>${esc(a.title)}</strong>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">${esc(a.purpose)}</div>
+    </div>`).join('')}
+    <button class="btn-primary" style="margin-top:16px" onclick="goToScenes()">Далее → Сцены и промпты</button>
+  </div>`;
+}
+
+window.genScenario = async function() {
+  const btn = $('btn-gen-scenario');
+  const topic = $('inp-topic')?.value;
+  if (!topic?.trim()) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Думаю...';
+  $('scenario-error').innerHTML = '';
+  try {
+    const res = await api('/api/scenario', {
+      topic, competitors: $('inp-comp')?.value, vector: $('inp-vector')?.value,
+      actCount: +$('inp-acts')?.value || 4, scenesPerAct: +$('inp-scenes')?.value || 3
+    });
+    state.scenario = { topic, competitors: $('inp-comp')?.value, vector: $('inp-vector')?.value, plan: res.data };
+    render();
+  } catch (e) {
+    $('scenario-error').innerHTML = `<div style="color:var(--accent3);font-size:13px;font-family:var(--mono);padding:12px">Ошибка: ${e.message}</div>`;
+  } finally { btn.disabled = false; btn.innerHTML = 'Сгенерировать сценарий →'; }
+};
+
+window.goToScenes = function() {
+  const plan = state.scenario.plan;
+  state.acts = plan.acts.map(a => ({
+    ...a, expanded: true,
+    scenes: Array.from({ length: a.scenes_count }, (_, i) => makeScene(a.id, i))
+  }));
+  state.step = 'scenes';
+  render();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 2: SCENES
+// ══════════════════════════════════════════════════════════════════════════════
+function renderScenes() {
+  const wrap = h('div', 'fade-in');
+  const allScenes = state.acts.flatMap(a => a.scenes);
+  const readyCount = allScenes.filter(s => s.promptStart).length;
+
+  let html = `
+    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='scenario';render()">← Сценарий</button></div>
+    <div class="section-head">
+      <div class="section-tag">// ЭТАП 02</div>
+      <h1 class="section-title">Сцены и промпты</h1>
+      <p class="section-sub">Агент прорабатывает персонажа, окружение и промпты. Всё редактируемо.</p>
+    </div>
+    <div class="settings-bar">
+      <div class="settings-field"><div class="card-label">Стиль</div><select class="select" onchange="state.style=this.value">${Object.entries({cinematic:'Кинематограф',realistic:'Гиперреализм',anime:'Аниме',oil_painting:'Масло',watercolor:'Акварель',digital_art:'Digital Art'}).map(([k,v]) => `<option value="${k}" ${state.style===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="settings-field"><div class="card-label">Формат</div><select class="select" onchange="state.aspectRatio=this.value"><option value="9:16" ${state.aspectRatio==='9:16'?'selected':''}>9:16 Shorts</option><option value="16:9" ${state.aspectRatio==='16:9'?'selected':''}>16:9 YouTube</option><option value="1:1">1:1 Квадрат</option></select></div>
+      <div class="settings-field"><div class="card-label">Язык</div><select class="select" onchange="state.language=this.value">${[['ru','🇷🇺 Русский'],['en','🇺🇸 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch']].map(([k,v]) => `<option value="${k}" ${state.language===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <button class="btn-primary" id="btn-all-prompts" onclick="genAllPrompts()">✦ Все промпты</button>
+    </div>`;
+
+  state.acts.forEach(act => {
+    html += `<div class="act-card"><div class="act-header" onclick="toggleAct(${act.id})">
+      <span class="act-num">ACT ${act.id}</span><div style="flex:1"><div class="act-title">${esc(act.title)}</div><div class="act-desc">${esc(act.purpose)}</div></div>
+      <span style="color:var(--text3);font-size:12px">${act.expanded ? '▲' : '▼'}</span></div>`;
+
+    if (act.expanded) {
+      act.scenes.forEach(sc => {
+        const badgeCls = sc.status === 'generating_prompts' ? 'running' : sc.promptStart ? 'done' : 'wait';
+        const badgeText = sc.status === 'generating_prompts' ? 'думаю...' : sc.promptStart ? 'промпты ✓' : 'ожидание';
+        html += `<div class="scene-row">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span class="scene-number">SCENE ${act.id}.${sc.index+1} · ${sc.duration} сек</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="badge badge-${badgeCls}">${badgeText}</span>
+              <button class="btn-accent2" onclick="genOnePrompt(${act.id},'${sc.id}')">↺ промпты</button>
+            </div>
+          </div>
+          <div><div class="card-label">Текст озвучки</div><textarea class="textarea" rows="2" oninput="updateScene(${act.id},'${sc.id}','voiceScript',this.value)" placeholder="Оставь пустым — агент сгенерирует">${sc.voiceScript}</textarea></div>
+          <div class="two-col">
+            <div><div class="card-label">Персонаж <label style="cursor:pointer"><input type="checkbox" ${sc.hasCharacter?'checked':''} onchange="updateScene(${act.id},'${sc.id}','hasCharacter',this.checked);render()"> есть</label></div>
+              <textarea class="textarea" rows="3" ${sc.hasCharacter?'':'disabled'} style="opacity:${sc.hasCharacter?1:0.4}" oninput="updateScene(${act.id},'${sc.id}','characterDesc',this.value)" placeholder="Пол, возраст, внешность...">${sc.characterDesc}</textarea></div>
+            <div><div class="card-label">Окружение</div><textarea class="textarea" rows="3" oninput="updateScene(${act.id},'${sc.id}','environmentDesc',this.value)" placeholder="Место, время, атмосфера...">${sc.environmentDesc}</textarea></div>
+          </div>`;
+
+        if (sc.promptStart) {
+          html += `<div class="two-col">
+            <div class="prompt-block"><div class="prompt-block-label" style="color:var(--accent2)"><span class="dot-char" style="background:var(--accent2)"></span>НАЧАЛЬНЫЙ КАДР</div>
+              <textarea class="textarea" rows="5" style="font-size:12px;font-family:var(--mono)" oninput="updateScene(${act.id},'${sc.id}','promptStart',this.value)">${sc.promptStart}</textarea></div>
+            <div class="prompt-block"><div class="prompt-block-label" style="color:var(--green)"><span class="dot-char" style="background:var(--green)"></span>КОНЕЧНЫЙ КАДР</div>
+              <textarea class="textarea" rows="5" style="font-size:12px;font-family:var(--mono)" oninput="updateScene(${act.id},'${sc.id}','promptEnd',this.value)">${sc.promptEnd}</textarea></div>
+          </div>
+          <div class="prompt-block"><div class="prompt-block-label" style="color:var(--accent3)"><span class="dot-char" style="background:var(--accent3)"></span>НЕГАТИВНЫЙ</div>
+            <textarea class="textarea" rows="2" style="font-size:11px;font-family:var(--mono)" oninput="updateScene(${act.id},'${sc.id}','negativePrompt',this.value)">${sc.negativePrompt}</textarea></div>
+          <div><div class="card-label">Камера</div><select class="select" onchange="updateScene(${act.id},'${sc.id}','cameraMove',this.value)">${CAMERA_OPTS.map(([k,v]) => `<option value="${k}" ${sc.cameraMove===k?'selected':''}>${v}</option>`).join('')}</select></div>`;
+        }
+        html += '</div>';
+      });
+      html += `<div style="padding:12px 20px;border-top:1px solid var(--border)"><button class="btn-ghost" onclick="addScene(${act.id})">+ сцена</button></div>`;
+    }
+    html += '</div>';
+  });
+
+  html += `<div id="scenes-log"></div>
+    <div style="margin-top:28px;display:flex;gap:12px">
+      <button class="btn-primary" onclick="goToGenerate()" ${readyCount===0?'disabled':''}>Генерация → (${readyCount}/${allScenes.length})</button>
+      <button class="btn-ghost" onclick="saveProject()">💾 Сохранить</button>
+    </div>`;
+
+  wrap.innerHTML = html;
+  return wrap;
+}
+
+window.toggleAct = function(actId) { state.acts.find(a => a.id === actId).expanded ^= true; render(); };
+
+window.updateScene = function(actId, sceneId, field, value) {
+  const act = state.acts.find(a => a.id === actId);
+  const scene = act?.scenes.find(s => s.id === sceneId);
+  if (scene) scene[field] = value;
+};
+
+window.addScene = function(actId) {
+  const act = state.acts.find(a => a.id === actId);
+  act.scenes.push(makeScene(actId, act.scenes.length));
+  render();
+};
+
+window.genOnePrompt = async function(actId, sceneId) {
+  const act = state.acts.find(a => a.id === actId);
+  const scene = act.scenes.find(s => s.id === sceneId);
+  scene.status = 'generating_prompts'; render();
+  addLog(`🧠 Акт ${actId}, сцена ${scene.index+1}: промпты...`, 'accent');
+  try {
+    const res = await api('/api/scene-prompts', {
+      videoTitle: state.scenario.plan.title, act, scene,
+      style: state.style, styleTags: STYLE_TAGS[state.style], aspectRatio: state.aspectRatio, language: state.language
+    });
+    Object.assign(scene, res.data, { negativePrompt: NEGATIVE_BASE + (res.data.negativePrompt ? ', ' + res.data.negativePrompt : ''), status: 'idle' });
+    addLog(`✅ Акт ${actId}, сцена ${scene.index+1}: готово`, 'green');
+  } catch (e) {
+    scene.status = 'error'; scene.error = e.message;
+    addLog(`❌ ${e.message}`, 'red');
+  }
+  render();
+};
+
+window.genAllPrompts = async function() {
+  $('btn-all-prompts').disabled = true; $('btn-all-prompts').innerHTML = '<span class="spin">◌</span> Генерирую...';
+  for (const act of state.acts) for (const sc of act.scenes) await window.genOnePrompt(act.id, sc.id);
+  render();
+};
+
+window.goToGenerate = function() { state.step = 'generate'; render(); };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 3: GENERATE — with video provider, 5s delay, voice fix, 2K config
+// ══════════════════════════════════════════════════════════════════════════════
+function renderGenerate() {
+  const wrap = h('div', 'fade-in');
+  const allScenes = state.acts.flatMap(a => a.scenes);
+  const doneCount = allScenes.filter(s => s.status === 'done').length;
+  const pw = s => ({ idle:'0%', generating_images:'40%', generating_audio:'70%', generating_video:'90%', done:'100%', error:'100%' }[s] || '0%');
+  const pc = s => s === 'done' ? 'var(--green)' : s === 'error' ? 'var(--accent3)' : 'var(--accent)';
+  const sl = s => ({
+    idle:'ожидание', generating_images:'🎨 кадры...', generating_audio:'🎙 озвучка...',
+    generating_video:'🎬 видео...', polling_video:'🎬 рендер...',
+    done:'✅ готово', error:'❌ ошибка'
+  }[s] || s);
+
+  // Video provider selector
+  const vpOpts = state.videoProviders.length
+    ? state.videoProviders.map(p => `<option value="${p.id}" ${state.videoProvider===p.id?'selected':''}>${p.name} (${p.price})</option>`).join('')
+    : '<option value="auto">Авто</option><option value="kling">Kling 2.5</option><option value="runway">Runway Gen-4</option><option value="veo">Veo 3.1</option>';
+
+  let html = `
+    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='scenes';render()">← Сцены</button></div>
+    <div class="section-head"><div class="section-tag">// ЭТАП 03</div><h1 class="section-title">Генерация</h1><p class="section-sub">Imagen 3 → кадры 2K · ElevenLabs → озвучка · Видео → Kling/Runway/Veo</p></div>
+    <div class="settings-bar">
+      <div class="settings-field"><div class="card-label">Видео провайдер</div><select class="select" onchange="state.videoProvider=this.value">${vpOpts}</select></div>
+      <div style="display:flex;gap:12px;align-items:flex-end">
+        <button class="btn-primary" id="btn-run-gen" onclick="runGenerate()">▶ Запустить (фото+озвучка)</button>
+        <button class="btn-ghost" id="btn-stop-gen" onclick="stopGenerate()" style="display:none">⏹ Стоп</button>
+      </div>
+      ${doneCount ? `<span style="color:var(--green);font-size:13px;font-family:var(--mono);align-self:center">${doneCount}/${allScenes.length}</span>` : ''}
+    </div>`;
+
+  state.acts.forEach(act => {
+    html += `<div style="margin-bottom:24px"><div style="font-family:var(--display);font-size:13px;font-weight:700;color:var(--text2);margin-bottom:10px"><span class="act-num" style="font-size:10px">ACT ${act.id}</span> ${esc(act.title)}</div>`;
+    act.scenes.forEach(sc => {
+      const badgeCls = sc.status === 'done' ? 'done' : sc.status === 'error' ? 'error' : sc.status !== 'idle' ? 'running' : 'wait';
+      html += `<div class="gen-scene">
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <div class="gen-preview">${sc.imageStartUrl ? `<img src="${sc.imageStartUrl}">` : '▷'}</div>
+          <div class="gen-preview">${sc.imageEndUrl ? `<img src="${sc.imageEndUrl}">` : '▷'}</div>
+        </div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <span style="font-size:12px;font-family:var(--mono);color:var(--text3)">${act.id}.${sc.index+1}</span>
+            <span class="badge badge-${badgeCls}">${sl(sc.status)}</span>
+            <button class="btn-ghost" style="font-size:11px;padding:4px 10px" onclick="regenScene(${act.id},'${sc.id}')">↺ фото</button>
+            ${sc.imageStartUrl ? `<button class="btn-accent2" style="font-size:11px;padding:4px 10px" onclick="genSceneVideo(${act.id},'${sc.id}')" ${sc.videoStatus==='processing'?'disabled':''}>🎬 видео</button>` : ''}
+          </div>
+          ${sc.voiceScript ? `<div style="font-size:13px;color:var(--text2);margin-bottom:8px">"${esc(sc.voiceScript.slice(0,100))}"</div>` : ''}
+          <div class="progress-bar"><div class="progress-fill" style="width:${pw(sc.status)};background:${pc(sc.status)}"></div></div>
+          ${sc.audioUrl ? `<audio controls src="${sc.audioUrl}" style="width:100%;height:32px;margin-top:8px"></audio>` : ''}
+          ${sc.videoUrl ? `<div class="video-controls"><div class="video-preview"><video src="${sc.videoUrl}" controls></video></div><span class="badge badge-done">видео ✓</span></div>` : ''}
+          ${sc.videoStatus === 'processing' ? `<div style="color:var(--accent2);font-size:11px;margin-top:6px;font-family:var(--mono)" class="pulse">🎬 Рендер видео... ${sc.videoProvider || ''}</div>` : ''}
+          ${sc.error ? `<div style="color:var(--accent3);font-size:11px;margin-top:6px;font-family:var(--mono)">${esc(sc.error)}</div>` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+
+  html += `<div id="gen-log"></div>
+    ${doneCount ? `<div style="margin-top:28px;display:flex;gap:12px"><button class="btn-primary" onclick="goToExport()">Экспорт → (${doneCount} сцен)</button><button class="btn-ghost" onclick="saveProject()">💾 Сохранить</button></div>` : ''}`;
+
+  wrap.innerHTML = html;
+  return wrap;
+}
+
+let genAbort = false;
+window.stopGenerate = function() { genAbort = true; };
+
+window.runGenerate = async function() {
+  genAbort = false;
+  const btn = $('btn-run-gen'); const stopBtn = $('btn-stop-gen');
+  btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Генерирую...';
+  if (stopBtn) stopBtn.style.display = '';
+  addLog('▶ Запуск генерации (фото + озвучка)...', 'accent');
+
+  let isFirst = true;
+  for (const act of state.acts) {
+    for (const sc of act.scenes) {
+      if (genAbort) break;
+      if (!sc.promptStart) continue;
+      if (sc.status === 'done' && sc.imageStartUrl) continue; // skip already done
+
+      // [FIX #3] 5 sec delay between image generations (rate limit)
+      if (!isFirst) {
+        addLog('⏳ Пауза 5 сек (rate limit)...', '');
+        await delay(5000);
+      }
+      isFirst = false;
+
+      await processScene(act, sc);
+      render();
+    }
+  }
+  addLog('🎉 Генерация завершена!', 'green');
+  if (stopBtn) stopBtn.style.display = 'none';
+  btn.disabled = false; btn.innerHTML = '▶ Запустить (фото+озвучка)';
+  render();
+};
+
+async function processScene(act, sc) {
+  // ── IMAGES (2K config via imageConfig, projectId for Supabase storage) ──
+  sc.status = 'generating_images';
+  sc.error = null; // [FIX #2] Clear previous errors
+  render();
+  addLog(`🎨 ${act.id}.${sc.index+1}: начальный кадр...`, 'accent');
+
+  let imageSuccess = false;
+  try {
+    const r1 = await api('/api/generate-image', {
+      prompt: sc.promptStart,
+      negativePrompt: sc.negativePrompt,
+      aspectRatio: state.aspectRatio,
+      projectId: state.projectId || undefined, // [FIX #7] Supabase storage
+      sceneId: sc.id,
+      imageType: 'start'
+    });
+    sc.imageStartUrl = r1.url || ('data:image/png;base64,' + r1.image);
+
+    // [FIX #3] Delay between two image gens for same scene
+    addLog(`⏳ Пауза 5 сек...`, '');
+    await delay(5000);
+
+    addLog(`🎨 ${act.id}.${sc.index+1}: конечный кадр...`, 'accent');
+    const r2 = await api('/api/generate-image', {
+      prompt: sc.promptEnd || sc.promptStart,
+      negativePrompt: sc.negativePrompt,
+      aspectRatio: state.aspectRatio,
+      projectId: state.projectId || undefined,
+      sceneId: sc.id,
+      imageType: 'end'
+    });
+    sc.imageEndUrl = r2.url || ('data:image/png;base64,' + r2.image);
+    addLog(`✅ ${act.id}.${sc.index+1}: кадры готовы`, 'green');
+    imageSuccess = true;
+  } catch (e) {
+    // [FIX #2] Only set error, don't block voice generation
+    addLog(`❌ Фото: ${e.message}`, 'red');
+    sc.error = 'Ошибка фото: ' + e.message;
+  }
+
+  // ── VOICE [FIX #1] — always attempt if voiceScript exists ──
+  if (sc.voiceScript) {
+    sc.status = 'generating_audio';
+    render();
+    addLog(`🎙 ${act.id}.${sc.index+1}: озвучка...`, 'accent');
+    try {
+      const rv = await api('/api/generate-voice', {
+        text: sc.voiceScript,
+        projectId: state.projectId || undefined, // [FIX #7] Supabase storage
+        sceneId: sc.id
+      });
+      sc.audioUrl = rv.url || ('data:audio/mpeg;base64,' + rv.audio);
+      addLog(`✅ ${act.id}.${sc.index+1}: озвучка готова`, 'green');
+    } catch (e) {
+      addLog(`⚠️ Озвучка: ${e.message}`, 'red');
+      // [FIX #2] Don't overwrite image error with voice error
+      if (!sc.error) sc.error = 'Ошибка озвучки: ' + e.message;
+    }
+  }
+
+  // [FIX #2] Only set done if images were successful
+  sc.status = imageSuccess ? 'done' : 'error';
+  fetchCosts(); // Update cost display
+}
+
+window.regenScene = async function(actId, sceneId) {
+  const act = state.acts.find(a => a.id === actId);
+  const sc = act.scenes.find(s => s.id === sceneId);
+  await processScene(act, sc);
+  render();
+};
+
+// ── VIDEO GENERATION [FIX #5] ──
+window.genSceneVideo = async function(actId, sceneId) {
+  const act = state.acts.find(a => a.id === actId);
+  const sc = act.scenes.find(s => s.id === sceneId);
+  if (!sc.imageStartUrl) return alert('Сначала сгенерируй кадры!');
+
+  sc.videoStatus = 'processing';
+  sc.videoProvider = state.videoProvider;
+  render();
+  addLog(`🎬 ${act.id}.${sc.index+1}: запуск видео (${state.videoProvider})...`, 'accent');
+
+  try {
+    // Determine image source — use URL if available from storage, else base64
+    const isBase64 = sc.imageStartUrl.startsWith('data:');
+    const payload = {
+      provider: state.videoProvider,
+      prompt: `${sc.promptStart}. Camera: ${sc.cameraMove}`,
+      duration: sc.duration || 5,
+      aspectRatio: state.aspectRatio
+    };
+    if (isBase64) {
+      payload.imageBase64 = sc.imageStartUrl.split(',')[1];
+    } else {
+      payload.imageUrl = sc.imageStartUrl;
+    }
+
+    const res = await api('/api/generate-video', payload);
+
+    if (res.status === 'done' && res.video) {
+      // Veo returns video directly
+      sc.videoUrl = 'data:video/mp4;base64,' + res.video;
+      sc.videoStatus = 'done';
+      addLog(`✅ ${act.id}.${sc.index+1}: видео готово`, 'green');
+    } else if (res.taskId) {
+      // Kling/Runway — need polling
+      sc.videoTaskId = res.taskId;
+      sc.videoProvider = res.provider;
+      addLog(`⏳ ${act.id}.${sc.index+1}: видео в очереди (${res.provider})`, 'accent');
+      pollVideoStatus(act, sc);
+    }
+  } catch (e) {
+    sc.videoStatus = 'error';
+    sc.error = 'Видео: ' + e.message;
+    addLog(`❌ Видео: ${e.message}`, 'red');
+  }
+  render();
+};
+
+async function pollVideoStatus(act, sc) {
+  const maxPolls = 60; // 5 min max
+  for (let i = 0; i < maxPolls; i++) {
+    await delay(5000);
+    try {
+      const res = await api('/api/video-status', { taskId: sc.videoTaskId, provider: sc.videoProvider });
+      if (res.status === 'done') {
+        if (res.videoUrl) {
+          sc.videoUrl = res.videoUrl;
+        } else if (res.video) {
+          sc.videoUrl = 'data:video/mp4;base64,' + res.video;
+        }
+        sc.videoStatus = 'done';
+        addLog(`✅ ${act.id}.${sc.index+1}: видео готово!`, 'green');
+        render();
+        return;
+      }
+      if (res.progress) {
+        addLog(`🎬 ${act.id}.${sc.index+1}: ${Math.round(res.progress * 100)}%`, '');
+      }
+    } catch (e) {
+      sc.videoStatus = 'error';
+      sc.error = 'Видео polling: ' + e.message;
+      addLog(`❌ ${e.message}`, 'red');
+      render();
+      return;
+    }
+  }
+  sc.videoStatus = 'error';
+  sc.error = 'Таймаут генерации видео';
+  addLog(`❌ Таймаут видео`, 'red');
+  render();
+}
+
+window.goToExport = function() { state.step = 'export'; render(); };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 4: EXPORT
+// ══════════════════════════════════════════════════════════════════════════════
+function renderExport() {
+  const wrap = h('div', 'fade-in');
+  const done = state.acts.flatMap(a => a.scenes).filter(s => s.status === 'done');
+  const withVideo = done.filter(s => s.videoUrl);
+
+  let scenesHtml = done.map((sc, i) => `<div style="display:flex;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
+    <div style="display:flex;gap:8px">
+      ${sc.imageStartUrl ? `<img src="${sc.imageStartUrl}" style="width:48px;height:48px;border-radius:6px;object-fit:cover">` : ''}
+      ${sc.imageEndUrl ? `<img src="${sc.imageEndUrl}" style="width:48px;height:48px;border-radius:6px;object-fit:cover">` : ''}
+    </div>
+    <div style="flex:1"><div style="font-size:12px;font-family:var(--mono);color:var(--text3)">Сцена ${i+1}</div>
+      ${sc.voiceScript ? `<div style="font-size:13px;color:var(--text2)">"${esc(sc.voiceScript.slice(0,80))}"</div>` : ''}
+      ${sc.audioUrl ? `<audio controls src="${sc.audioUrl}" style="height:28px;margin-top:6px"></audio>` : ''}
+      ${sc.videoUrl ? `<div style="margin-top:6px"><video src="${sc.videoUrl}" controls style="height:60px;border-radius:6px"></video></div>` : ''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${sc.imageStartUrl ? `<button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.imageStartUrl}','s${i+1}_start.png')">▷ start</button>` : ''}
+      ${sc.imageEndUrl ? `<button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.imageEndUrl}','s${i+1}_end.png')">▷ end</button>` : ''}
+      ${sc.videoUrl ? `<button class="btn-accent2" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.videoUrl}','s${i+1}_video.mp4')">▷ video</button>` : ''}
+    </div>
+  </div>`).join('');
+
+  wrap.innerHTML = `
+    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='generate';render()">← Генерация</button></div>
+    <div class="section-head"><div class="section-tag">// ЭТАП 04</div><h1 class="section-title">Экспорт</h1><p class="section-sub">Скачивай материалы → монтируй</p></div>
+    <div class="export-grid">
+      <div class="export-card"><div class="export-card-icon">🖼</div><div class="export-card-title">Кадры 2K</div><div class="export-card-sub">${done.length * 2} изображений</div>
+        <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('images')">↓ Скачать фото</button></div>
+      <div class="export-card"><div class="export-card-icon">🎙</div><div class="export-card-title">Озвучка</div><div class="export-card-sub">${done.filter(s=>s.audioUrl).length} аудио</div>
+        <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('audio')">↓ Скачать MP3</button></div>
+      <div class="export-card"><div class="export-card-icon">🎬</div><div class="export-card-title">Видео</div><div class="export-card-sub">${withVideo.length} клипов</div>
+        <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('video')" ${withVideo.length===0?'disabled':''}>↓ Скачать MP4</button></div>
+    </div>
+    <div class="card"><div class="card-label" style="margin-bottom:16px">Сцены по одной</div>${scenesHtml}</div>
+    <div class="card" style="border-color:rgba(232,255,71,0.15);background:rgba(232,255,71,0.03)">
+      <div class="card-label" style="color:var(--accent)">Следующие шаги</div>
+      <div style="font-size:13px;color:var(--text2);line-height:2">
+        <div>1. ${withVideo.length ? 'Видео готово! Объедини клипы:' : 'Загрузи пары (start+end) в <strong style="color:var(--text)">Runway Gen-3</strong> или <strong style="color:var(--text)">Kling 1.6</strong>'}</div>
+        <div>2. <code style="color:var(--accent2);font-family:var(--mono);font-size:12px">ffmpeg -i clip.mp4 -i audio.mp3 -shortest scene.mp4</code></div>
+        <div>3. <code style="color:var(--accent2);font-family:var(--mono);font-size:12px">ffmpeg -f concat -i list.txt -c copy full.mp4</code></div>
+        <div>4. Субтитры → публикация 🚀</div>
+      </div>
+    </div>
+    <div style="margin-top:24px"><button class="btn-ghost" onclick="saveProject()">💾 Сохранить проект</button></div>`;
+  return wrap;
+}
+
+window.dl = function(url, name) { const a = document.createElement('a'); a.href = url; a.download = name; a.click(); };
+window.dlAll = function(type) {
+  const done = state.acts.flatMap(a => a.scenes).filter(s => s.status === 'done');
+  done.forEach((s, i) => {
+    if (type === 'images') { if (s.imageStartUrl) dl(s.imageStartUrl, `scene_${i+1}_start.png`); if (s.imageEndUrl) dl(s.imageEndUrl, `scene_${i+1}_end.png`); }
+    if (type === 'audio' && s.audioUrl) dl(s.audioUrl, `scene_${i+1}_audio.mp3`);
+    if (type === 'video' && s.videoUrl) dl(s.videoUrl, `scene_${i+1}_video.mp4`);
+  });
+};
+
+// ── LOG ──
+function renderLog() {
+  const el = $('scenes-log') || $('gen-log');
+  if (!el) return;
+  el.innerHTML = state.log.length ? `<div class="log-panel">${state.log.map(l => `<div class="log-line ${l.type}">${l.t} — ${l.msg}</div>`).join('')}</div>` : '';
+  if (el.querySelector('.log-panel')) el.querySelector('.log-panel').scrollTop = 99999;
+}
+
+// ── INIT ──
+render();
+loadProjects();
+loadVideoProviders();
+fetchCosts();
+setInterval(fetchCosts, 15000); // refresh costs every 15s
+</script>
+</body>
+</html>
