@@ -181,6 +181,7 @@ const state = {
   // Video
   videoProvider: 'auto',
   videoProviders: [],
+  finalVideoUrl: null,
 };
 
 const NEGATIVE_BASE = 'blurry, out of focus, low quality, jpeg artifacts, watermark, text overlay, signature, extra limbs, distorted face, bad anatomy, disfigured, duplicate, overexposed, underexposed, flat lighting, ugly, deformed';
@@ -257,7 +258,7 @@ function makeScene(actId, idx) {
     promptStart: '', promptEnd: '', negativePrompt: NEGATIVE_BASE,
     character: null, environment: null,
     imageStartUrl: null, imageEndUrl: null, audioUrl: null, videoUrl: null,
-    videoTaskId: null, videoProvider: null, videoStatus: null,
+    videoTaskId: null, videoProvider: null, videoStatus: null, mergedUrl: null,
     status: 'idle', error: null };
 }
 
@@ -770,6 +771,7 @@ function renderGenerate() {
   const wrap = h('div', 'fade-in');
   const allScenes = state.acts.flatMap(a => a.scenes);
   const doneCount = allScenes.filter(s => s.status === 'done').length;
+  const withVideo = allScenes.filter(s => s.videoUrl).length;
   const pw = s => ({ idle:'0%', generating_images:'40%', generating_audio:'70%', generating_video:'90%', done:'100%', error:'100%' }[s] || '0%');
   const pc = s => s === 'done' ? 'var(--green)' : s === 'error' ? 'var(--accent3)' : 'var(--accent)';
   const sl = s => ({
@@ -788,11 +790,13 @@ function renderGenerate() {
     <div class="section-head"><div class="section-tag">// ЭТАП 03</div><h1 class="section-title">Генерация</h1><p class="section-sub">Imagen 3 → кадры 2K · ElevenLabs → озвучка · Видео → Kling/Runway/Veo</p></div>
     <div class="settings-bar">
       <div class="settings-field"><div class="card-label">Видео провайдер</div><select class="select" onchange="state.videoProvider=this.value">${vpOpts}</select></div>
-      <div style="display:flex;gap:12px;align-items:flex-end">
-        <button class="btn-primary" id="btn-run-gen" onclick="runGenerate()">▶ Запустить (фото+озвучка)</button>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <button class="btn-primary" id="btn-run-gen" onclick="runGenerate()">▶ Фото + озвучка</button>
+        <button class="btn-accent2" id="btn-batch-video" onclick="batchVideoGenerate()">🎬 Все видео</button>
+        <button class="btn-ghost" id="btn-merge-all" onclick="mergeAllScenes()" ${withVideo < 2 ? 'disabled' : ''}>⚡ Склейка</button>
         <button class="btn-ghost" id="btn-stop-gen" onclick="stopGenerate()" style="display:none">⏹ Стоп</button>
       </div>
-      ${doneCount ? `<span style="color:var(--green);font-size:13px;font-family:var(--mono);align-self:center">${doneCount}/${allScenes.length}</span>` : ''}
+      ${doneCount ? `<span style="color:var(--green);font-size:13px;font-family:var(--mono);align-self:center">${doneCount}/${allScenes.length} сцен · ${withVideo} видео</span>` : ''}
     </div>`;
 
   state.acts.forEach(act => {
@@ -814,7 +818,12 @@ function renderGenerate() {
           ${sc.voiceScript ? `<div style="font-size:13px;color:var(--text2);margin-bottom:8px">"${esc(sc.voiceScript.slice(0,100))}"</div>` : ''}
           <div class="progress-bar"><div class="progress-fill" style="width:${pw(sc.status)};background:${pc(sc.status)}"></div></div>
           ${sc.audioUrl ? `<audio controls src="${sc.audioUrl}" style="width:100%;height:32px;margin-top:8px"></audio>` : ''}
-          ${sc.videoUrl ? `<div class="video-controls"><div class="video-preview"><video src="${sc.videoUrl}" controls></video></div><span class="badge badge-done">видео ✓</span></div>` : ''}
+          ${sc.videoUrl ? `<div class="video-controls">
+            <div class="video-preview" onclick="showVideoModal('${sc.videoUrl}')" style="cursor:pointer"><video src="${sc.videoUrl}" muted></video></div>
+            <span class="badge badge-done">видео ✓</span>
+            ${sc.audioUrl && sc.videoUrl ? `<button class="btn-ghost" style="font-size:11px;padding:4px 10px" onclick="mergeScene(${act.id},'${sc.id}')">⚡ +звук</button>` : ''}
+            ${sc.mergedUrl ? `<span class="badge badge-done" style="background:rgba(71,194,255,0.1);color:var(--accent2)">склеено ✓</span>` : ''}
+          </div>` : ''}
           ${sc.videoStatus === 'processing' ? `<div style="color:var(--accent2);font-size:11px;margin-top:6px;font-family:var(--mono)" class="pulse">🎬 Рендер видео... ${sc.videoProvider || ''}</div>` : ''}
           ${sc.error ? `<div style="color:var(--accent3);font-size:11px;margin-top:6px;font-family:var(--mono)">${esc(sc.error)}</div>` : ''}
         </div>
@@ -1000,7 +1009,7 @@ async function pollVideoStatus(act, sc) {
   for (let i = 0; i < maxPolls; i++) {
     await delay(5000);
     try {
-      const res = await api('/api/video-status', { taskId: sc.videoTaskId, provider: sc.videoProvider });
+      const res = await api('/api/video-status', { taskId: sc.videoTaskId, provider: sc.videoProvider, projectId: state.projectId || undefined });
       if (res.status === 'done') {
         if (res.videoUrl) {
           sc.videoUrl = res.videoUrl;
@@ -1031,6 +1040,165 @@ async function pollVideoStatus(act, sc) {
 
 window.goToExport = function() { state.step = 'export'; render(); };
 
+// ── BATCH VIDEO GENERATION ──
+window.batchVideoGenerate = async function() {
+  const btn = $('btn-batch-video');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Видео...'; }
+  genAbort = false;
+  
+  const allScenes = state.acts.flatMap(a => ({ act: a, scenes: a.scenes }));
+  let started = 0;
+  const pending = []; // parallel polling tasks
+  
+  for (const { act, scenes } of allScenes) {
+    for (const sc of scenes) {
+      if (genAbort) break;
+      if (!sc.imageStartUrl || sc.videoUrl || sc.videoStatus === 'processing') continue;
+      
+      // Rate limit: wait between starts
+      if (started > 0) {
+        addLog('⏳ Пауза 3 сек...', '');
+        await delay(3000);
+      }
+      
+      addLog(`🎬 ${act.id}.${sc.index+1}: запуск видео batch...`, 'accent');
+      sc.videoStatus = 'processing';
+      sc.videoProvider = state.videoProvider;
+      render();
+      
+      try {
+        const isBase64 = sc.imageStartUrl.startsWith('data:');
+        const payload = {
+          provider: state.videoProvider,
+          prompt: `${sc.promptStart}. Camera: ${sc.cameraMove}`,
+          duration: sc.duration || 5,
+          aspectRatio: state.aspectRatio,
+          projectId: state.projectId || undefined,
+          sceneId: sc.id
+        };
+        if (isBase64) payload.imageBase64 = sc.imageStartUrl.split(',')[1];
+        else payload.imageUrl = sc.imageStartUrl;
+        
+        const res = await api('/api/generate-video', payload);
+        
+        if (res.status === 'done' && (res.video || res.videoUrl)) {
+          sc.videoUrl = res.videoUrl || ('data:video/mp4;base64,' + res.video);
+          sc.videoStatus = 'done';
+          addLog(`✅ ${act.id}.${sc.index+1}: видео готово`, 'green');
+        } else if (res.taskId) {
+          sc.videoTaskId = res.taskId;
+          sc.videoProvider = res.provider;
+          addLog(`⏳ ${act.id}.${sc.index+1}: в очереди (${res.provider})`, 'accent');
+          // Start polling in background
+          pending.push(pollVideoStatus(act, sc));
+        }
+        started++;
+      } catch (e) {
+        sc.videoStatus = 'error';
+        sc.error = 'Видео: ' + e.message;
+        addLog(`❌ ${act.id}.${sc.index+1}: ${e.message}`, 'red');
+      }
+      render();
+    }
+  }
+  
+  // Wait for all polling tasks to finish
+  if (pending.length) {
+    addLog(`⏳ Ждём завершения ${pending.length} видео...`, 'accent');
+    await Promise.allSettled(pending);
+  }
+  
+  addLog('🎉 Batch видео завершён!', 'green');
+  if (btn) { btn.disabled = false; btn.innerHTML = '🎬 Все видео'; }
+  fetchCosts();
+  render();
+};
+
+// ── MERGE SCENE (video + audio) ──
+window.mergeScene = async function(actId, sceneId) {
+  const act = state.acts.find(a => a.id === actId);
+  const sc = act.scenes.find(s => s.id === sceneId);
+  if (!sc.videoUrl) return;
+  
+  addLog(`⚡ ${act.id}.${sc.index+1}: склейка видео + звук...`, 'accent');
+  try {
+    const res = await api('/api/merge-scene', {
+      videoUrl: sc.videoUrl,
+      audioUrl: sc.audioUrl || null,
+      projectId: state.projectId || undefined,
+      sceneId: sc.id
+    });
+    sc.mergedUrl = res.url;
+    addLog(`✅ ${act.id}.${sc.index+1}: склеено!`, 'green');
+  } catch (e) {
+    addLog(`❌ Склейка: ${e.message}`, 'red');
+    // ffmpeg might not be available on Railway
+    if (e.message.includes('ffmpeg') || e.message.includes('ENOENT')) {
+      addLog('⚠️ ffmpeg не установлен на сервере. Добавь в Dockerfile: RUN apt-get install -y ffmpeg', 'red');
+    }
+  }
+  render();
+};
+
+// ── MERGE ALL SCENES into final video ──
+window.mergeAllScenes = async function() {
+  const btn = $('btn-merge-all');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Склейка...'; }
+  
+  // First merge each scene (video+audio) if not yet done
+  const allScenes = state.acts.flatMap(a => a.scenes).filter(s => s.videoUrl);
+  for (const sc of allScenes) {
+    if (!sc.mergedUrl && sc.audioUrl) {
+      const act = state.acts.find(a => a.scenes.includes(sc));
+      addLog(`⚡ Склейка сцены ${act.id}.${sc.index+1}...`, 'accent');
+      try {
+        const res = await api('/api/merge-scene', {
+          videoUrl: sc.videoUrl, audioUrl: sc.audioUrl,
+          projectId: state.projectId || undefined, sceneId: sc.id
+        });
+        sc.mergedUrl = res.url;
+      } catch (e) { addLog(`⚠️ ${e.message}`, 'red'); }
+    }
+  }
+  render();
+  
+  // Now concatenate all clips
+  addLog('⚡ Финальная склейка всех клипов...', 'accent');
+  try {
+    const scenes = allScenes.map(s => ({
+      videoUrl: s.videoUrl,
+      mergedUrl: s.mergedUrl || null
+    }));
+    const res = await api('/api/merge-all', { scenes, projectId: state.projectId || undefined });
+    state.finalVideoUrl = res.url;
+    addLog(`✅ Финальное видео готово! (${res.clipCount} клипов)`, 'green');
+  } catch (e) {
+    addLog(`❌ Финальная склейка: ${e.message}`, 'red');
+  }
+  
+  if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Склейка'; }
+  render();
+};
+
+// ── VIDEO PREVIEW MODAL ──
+window.showVideoModal = function(url) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:24px;width:100%;max-width:640px;max-height:90vh">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-family:var(--display);font-size:16px;font-weight:800">Предпросмотр</div>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <video src="${url}" controls autoplay style="width:100%;border-radius:12px;max-height:70vh"></video>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn-primary" style="flex:1;justify-content:center" onclick="dl('${url}','video.mp4')">↓ Скачать</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 4: EXPORT
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1038,46 +1206,48 @@ function renderExport() {
   const wrap = h('div', 'fade-in');
   const done = state.acts.flatMap(a => a.scenes).filter(s => s.status === 'done');
   const withVideo = done.filter(s => s.videoUrl);
+  const withMerged = done.filter(s => s.mergedUrl);
 
   let scenesHtml = done.map((sc, i) => `<div style="display:flex;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
     <div style="display:flex;gap:8px">
       ${sc.imageStartUrl ? `<img src="${sc.imageStartUrl}" style="width:48px;height:48px;border-radius:6px;object-fit:cover">` : ''}
       ${sc.imageEndUrl ? `<img src="${sc.imageEndUrl}" style="width:48px;height:48px;border-radius:6px;object-fit:cover">` : ''}
     </div>
-    <div style="flex:1"><div style="font-size:12px;font-family:var(--mono);color:var(--text3)">Сцена ${i+1}</div>
+    <div style="flex:1"><div style="font-size:12px;font-family:var(--mono);color:var(--text3)">Сцена ${i+1} ${sc.mergedUrl ? '<span style="color:var(--accent2)">· склеено</span>' : sc.videoUrl ? '<span style="color:var(--green)">· видео</span>' : ''}</div>
       ${sc.voiceScript ? `<div style="font-size:13px;color:var(--text2)">"${esc(sc.voiceScript.slice(0,80))}"</div>` : ''}
       ${sc.audioUrl ? `<audio controls src="${sc.audioUrl}" style="height:28px;margin-top:6px"></audio>` : ''}
-      ${sc.videoUrl ? `<div style="margin-top:6px"><video src="${sc.videoUrl}" controls style="height:60px;border-radius:6px"></video></div>` : ''}
+      ${sc.videoUrl ? `<div style="margin-top:6px"><video src="${sc.mergedUrl || sc.videoUrl}" controls style="height:60px;border-radius:6px;cursor:pointer" onclick="showVideoModal('${sc.mergedUrl || sc.videoUrl}')"></video></div>` : ''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       ${sc.imageStartUrl ? `<button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.imageStartUrl}','s${i+1}_start.png')">▷ start</button>` : ''}
       ${sc.imageEndUrl ? `<button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.imageEndUrl}','s${i+1}_end.png')">▷ end</button>` : ''}
-      ${sc.videoUrl ? `<button class="btn-accent2" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.videoUrl}','s${i+1}_video.mp4')">▷ video</button>` : ''}
+      ${sc.mergedUrl ? `<button class="btn-accent2" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.mergedUrl}','s${i+1}_merged.mp4')">▷ merged</button>` : sc.videoUrl ? `<button class="btn-accent2" style="font-size:11px;padding:4px 8px" onclick="dl('${sc.videoUrl}','s${i+1}_video.mp4')">▷ video</button>` : ''}
     </div>
   </div>`).join('');
 
   wrap.innerHTML = `
     <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='generate';render()">← Генерация</button></div>
-    <div class="section-head"><div class="section-tag">// ЭТАП 04</div><h1 class="section-title">Экспорт</h1><p class="section-sub">Скачивай материалы → монтируй</p></div>
+    <div class="section-head"><div class="section-tag">// ЭТАП 04</div><h1 class="section-title">Экспорт</h1><p class="section-sub">${done.length} сцен · ${withVideo.length} видео · ${withMerged.length} склеено</p></div>
+    ${state.finalVideoUrl ? `<div class="card" style="border-color:rgba(71,194,255,0.3);background:rgba(71,194,255,0.05);margin-bottom:24px">
+      <div class="card-label" style="color:var(--accent2)">🎬 ФИНАЛЬНОЕ ВИДЕО</div>
+      <video src="${state.finalVideoUrl}" controls style="width:100%;max-height:400px;border-radius:12px;margin:12px 0"></video>
+      <button class="btn-primary" style="width:100%;justify-content:center" onclick="dl('${state.finalVideoUrl}','final_video.mp4')">↓ Скачать финальное видео</button>
+    </div>` : ''}
     <div class="export-grid">
-      <div class="export-card"><div class="export-card-icon">🖼</div><div class="export-card-title">Кадры 2K</div><div class="export-card-sub">${done.length * 2} изображений</div>
+      <div class="export-card"><div class="export-card-icon">🖼</div><div class="export-card-title">Кадры</div><div class="export-card-sub">${done.length * 2} изображений</div>
         <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('images')">↓ Скачать фото</button></div>
       <div class="export-card"><div class="export-card-icon">🎙</div><div class="export-card-title">Озвучка</div><div class="export-card-sub">${done.filter(s=>s.audioUrl).length} аудио</div>
-        <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('audio')">↓ Скачать MP3</button></div>
+        <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('audio')">↓ Скачать аудио</button></div>
       <div class="export-card"><div class="export-card-icon">🎬</div><div class="export-card-title">Видео</div><div class="export-card-sub">${withVideo.length} клипов</div>
         <button class="btn-primary" style="margin-top:16px;width:100%;justify-content:center" onclick="dlAll('video')" ${withVideo.length===0?'disabled':''}>↓ Скачать MP4</button></div>
     </div>
     <div class="card"><div class="card-label" style="margin-bottom:16px">Сцены по одной</div>${scenesHtml}</div>
-    <div class="card" style="border-color:rgba(232,255,71,0.15);background:rgba(232,255,71,0.03)">
-      <div class="card-label" style="color:var(--accent)">Следующие шаги</div>
-      <div style="font-size:13px;color:var(--text2);line-height:2">
-        <div>1. ${withVideo.length ? 'Видео готово! Объедини клипы:' : 'Загрузи пары (start+end) в <strong style="color:var(--text)">Runway Gen-3</strong> или <strong style="color:var(--text)">Kling 1.6</strong>'}</div>
-        <div>2. <code style="color:var(--accent2);font-family:var(--mono);font-size:12px">ffmpeg -i clip.mp4 -i audio.mp3 -shortest scene.mp4</code></div>
-        <div>3. <code style="color:var(--accent2);font-family:var(--mono);font-size:12px">ffmpeg -f concat -i list.txt -c copy full.mp4</code></div>
-        <div>4. Субтитры → публикация 🚀</div>
-      </div>
-    </div>
-    <div style="margin-top:24px"><button class="btn-ghost" onclick="saveProject()">💾 Сохранить проект</button></div>`;
+    ${!state.finalVideoUrl && withVideo.length >= 2 ? `<div class="card" style="border-color:rgba(71,194,255,0.2);background:rgba(71,194,255,0.03)">
+      <div class="card-label" style="color:var(--accent2)">Автоматическая склейка</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Объединить все видео + озвучку в одно финальное видео на сервере (ffmpeg)</div>
+      <button class="btn-accent2" onclick="mergeAllScenes()">⚡ Склеить ${withVideo.length} клипов в финал</button>
+    </div>` : ''}
+    <div style="margin-top:24px;display:flex;gap:12px"><button class="btn-ghost" onclick="saveProject()">💾 Сохранить проект</button></div>`;
   return wrap;
 }
 
@@ -1101,10 +1271,10 @@ function renderLog() {
 
 // ── INIT ──
 render();
-loadProjects();
-loadVideoProviders();
-fetchCosts();
-setInterval(fetchCosts, 15000); // refresh costs every 15s
+loadProjects().catch(() => {});
+loadVideoProviders().catch(() => {});
+fetchCosts().catch(() => {});
+setInterval(() => fetchCosts().catch(() => {}), 15000);
 </script>
 </body>
 </html>
