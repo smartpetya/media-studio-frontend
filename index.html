@@ -913,10 +913,12 @@ async function processScene(act, sc) {
     try {
       const rv = await api('/api/generate-voice', {
         text: sc.voiceScript,
-        projectId: state.projectId || undefined, // [FIX #7] Supabase storage
-        sceneId: sc.id
+        projectId: state.projectId || undefined,
+        sceneId: sc.id,
+        language: state.language
       });
-      sc.audioUrl = rv.url || ('data:audio/mpeg;base64,' + rv.audio);
+      const mime = rv.mime || 'audio/mpeg';
+      sc.audioUrl = rv.url || (`data:${mime};base64,` + rv.audio);
       addLog(`✅ ${act.id}.${sc.index+1}: озвучка готова`, 'green');
     } catch (e) {
       addLog(`⚠️ Озвучка: ${e.message}`, 'red');
@@ -955,7 +957,9 @@ window.genSceneVideo = async function(actId, sceneId) {
       provider: state.videoProvider,
       prompt: `${sc.promptStart}. Camera: ${sc.cameraMove}`,
       duration: sc.duration || 5,
-      aspectRatio: state.aspectRatio
+      aspectRatio: state.aspectRatio,
+      projectId: state.projectId || undefined,
+      sceneId: sc.id
     };
     if (isBase64) {
       payload.imageBase64 = sc.imageStartUrl.split(',')[1];
