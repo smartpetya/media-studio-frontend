@@ -838,6 +838,13 @@ window.runGenerate = async function() {
   const btn = $('btn-run-gen'); const stopBtn = $('btn-stop-gen');
   btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Генерирую...';
   if (stopBtn) stopBtn.style.display = '';
+
+  // Auto-save project to get projectId (needed for Supabase Storage URLs)
+  if (!state.projectId) {
+    addLog('💾 Автосохранение проекта...', 'accent');
+    try { await saveProject(); } catch (e) { addLog('⚠️ Автосохранение: ' + e.message, 'red'); }
+  }
+
   addLog('▶ Запуск генерации (фото + озвучка)...', 'accent');
 
   let isFirst = true;
