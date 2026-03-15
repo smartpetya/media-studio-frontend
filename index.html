@@ -204,19 +204,36 @@ const CAMERA_OPTS = [
 // API HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
 async function api(path, body) {
-  const res = await fetch(API_BASE + path, {
-    method: body ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const text = await res.text();
+  let res;
+  try {
+    res = await fetch(API_BASE + path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (fetchErr) {
+    throw new Error(`Сеть: ${fetchErr.message} (${path})`);
+  }
+  
+  let text;
+  try {
+    text = await res.text();
+  } catch (readErr) {
+    throw new Error(`Чтение ответа: ${readErr.message} (${path}, status=${res.status})`);
+  }
+  
+  if (!text || text.length === 0) {
+    throw new Error(`Пустой ответ от сервера (${path}, status=${res.status})`);
+  }
+  
   let json;
   try {
     json = JSON.parse(text);
-  } catch (e) {
-    console.error('API parse error:', path, 'status:', res.status, 'body length:', text.length, 'start:', text.slice(0, 200));
-    throw new Error(`Ответ сервера невалидный JSON (${res.status}, ${text.length} bytes)`);
+  } catch (parseErr) {
+    console.error('API parse error:', path, 'status:', res.status, 'length:', text.length, 'body:', text.slice(0, 300));
+    throw new Error(`Невалидный JSON (${path}, status=${res.status}, ${text.length}b): ${text.slice(0, 100)}`);
   }
+  
   if (!json.success) throw new Error(json.error || 'API error');
   return json;
 }
@@ -996,6 +1013,7 @@ window.genSceneVideo = async function(actId, sceneId) {
       sc.videoUrl = res.videoUrl || ('data:video/mp4;base64,' + res.video);
       sc.videoStatus = 'done';
       addLog(`✅ ${act.id}.${sc.index+1}: видео готово`, 'green');
+      saveProject().catch(e => addLog(`⚠️ Автосохранение: ${e.message}`, 'red'));
     } else if (res.taskId) {
       // Kling/Runway — need polling
       sc.videoTaskId = res.taskId;
@@ -1035,6 +1053,8 @@ async function pollVideoStatus(act, sc) {
         sc.videoStatus = 'done';
         addLog(`✅ ${act.id}.${sc.index+1}: видео готово!`, 'green');
         render();
+        // Auto-save to persist video URL in DB
+        saveProject().catch(e => addLog(`⚠️ Автосохранение: ${e.message}`, 'red'));
         return;
       }
       if (res.progress) {
@@ -1133,6 +1153,7 @@ window.batchVideoGenerate = async function() {
   addLog('🎉 Batch видео завершён!', 'green');
   if (btn) { btn.disabled = false; btn.innerHTML = '🎬 Все видео'; }
   fetchCosts();
+  saveProject().catch(e => addLog(`⚠️ Автосохранение: ${e.message}`, 'red'));
   render();
 };
 
