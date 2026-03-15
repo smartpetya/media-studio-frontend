@@ -242,8 +242,17 @@ function genId() { return Math.random().toString(36).slice(2, 8); }
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+// Cost tracking
+let sessionCosts = null;
+async function fetchCosts() {
+  try {
+    const res = await api('/api/costs');
+    sessionCosts = res.costs;
+  } catch (_) {}
+}
+
 function makeScene(actId, idx) {
-  return { id: genId(), actId, index: idx, duration: 4, voiceScript: '', hasCharacter: true,
+  return { id: genId(), actId, index: idx, duration: 5, voiceScript: '', hasCharacter: true,
     characterDesc: '', environmentDesc: '', cameraMove: 'slow_zoom_in',
     promptStart: '', promptEnd: '', negativePrompt: NEGATIVE_BASE,
     character: null, environment: null,
@@ -304,6 +313,13 @@ function renderHeader() {
   }
 
   const rightDiv = h('div', 'header-right');
+  if (sessionCosts) {
+    const costEl = h('span', '', `💰 $${sessionCosts.total.toFixed(3)}`, {
+      style: 'font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer',
+      onclick: showCostsModal
+    });
+    rightDiv.appendChild(costEl);
+  }
   if (state.projectId) {
     const saveBtn = h('button', 'btn-ghost', '💾 Сохранить', { onclick: saveProject });
     rightDiv.appendChild(saveBtn);
@@ -340,6 +356,51 @@ window.saveSettings = function() {
   const url = $('settings-url')?.value?.trim();
   if (url) { localStorage.setItem('media_studio_api', url); location.reload(); }
 };
+
+window.checkBackend = async function() {
+
+// ── COSTS MODAL ──
+function showCostsModal() {
+  if (!sessionCosts) return;
+  const c = sessionCosts;
+  const overlay = h('div', 'modal-overlay', null, { onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const box = h('div', 'modal-box');
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div style="font-family:var(--display);font-size:18px;font-weight:800">💰 Расходы (сессия)</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;gap:12px">
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🎨 Фото (${c.imageCount} шт)</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.images.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🧠 Сценарий (${c.scenarioCount})</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.scenario.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">✍️ Промпты (${c.promptCount})</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.prompts.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🎙 Озвучка (${c.voiceChars} символов)</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.voice.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--surface2);border-radius:10px">
+        <span style="color:var(--text2)">🎬 Видео (${c.videoSec} сек)</span>
+        <span style="color:var(--accent);font-family:var(--mono)">$${c.video.toFixed(3)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px;background:rgba(232,255,71,0.05);border:1px solid rgba(232,255,71,0.2);border-radius:10px;font-weight:700">
+        <span>ИТОГО</span>
+        <span style="color:var(--accent);font-family:var(--mono);font-size:16px">$${c.total.toFixed(3)}</span>
+      </div>
+    </div>
+    <div class="tip" style="margin-top:16px">Примерные расценки: Gemini image 2K ~$0.135, Claude ~$0.02, ElevenLabs ~$0.30/1000 символов. Расходы считаются с момента запуска сервера.</div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
 
 window.checkBackend = async function() {
   const url = $('settings-url')?.value?.trim();
@@ -868,6 +929,7 @@ async function processScene(act, sc) {
 
   // [FIX #2] Only set done if images were successful
   sc.status = imageSuccess ? 'done' : 'error';
+  fetchCosts(); // Update cost display
 }
 
 window.regenScene = async function(actId, sceneId) {
@@ -1033,6 +1095,8 @@ function renderLog() {
 render();
 loadProjects();
 loadVideoProviders();
+fetchCosts();
+setInterval(fetchCosts, 15000); // refresh costs every 15s
 </script>
 </body>
 </html>
