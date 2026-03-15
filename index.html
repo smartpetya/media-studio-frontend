@@ -209,7 +209,14 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
   });
-  const json = await res.json();
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    console.error('API parse error:', path, 'status:', res.status, 'body length:', text.length, 'start:', text.slice(0, 200));
+    throw new Error(`Ответ сервера невалидный JSON (${res.status}, ${text.length} bytes)`);
+  }
   if (!json.success) throw new Error(json.error || 'API error');
   return json;
 }
@@ -1006,15 +1013,24 @@ window.genSceneVideo = async function(actId, sceneId) {
 
 async function pollVideoStatus(act, sc) {
   const maxPolls = 60; // 5 min max
+  let errors = 0;
   for (let i = 0; i < maxPolls; i++) {
     await delay(5000);
     try {
       const res = await api('/api/video-status', { taskId: sc.videoTaskId, provider: sc.videoProvider, projectId: state.projectId || undefined });
+      errors = 0; // reset on success
       if (res.status === 'done') {
         if (res.videoUrl) {
           sc.videoUrl = res.videoUrl;
         } else if (res.video) {
           sc.videoUrl = 'data:video/mp4;base64,' + res.video;
+        } else {
+          // No video in response
+          sc.videoStatus = 'error';
+          sc.error = res.error || 'Видео не получено';
+          addLog(`⚠️ ${act.id}.${sc.index+1}: ${sc.error}`, 'red');
+          render();
+          return;
         }
         sc.videoStatus = 'done';
         addLog(`✅ ${act.id}.${sc.index+1}: видео готово!`, 'green');
@@ -1025,11 +1041,17 @@ async function pollVideoStatus(act, sc) {
         addLog(`🎬 ${act.id}.${sc.index+1}: ${Math.round(res.progress * 100)}%`, '');
       }
     } catch (e) {
-      sc.videoStatus = 'error';
-      sc.error = 'Видео polling: ' + e.message;
-      addLog(`❌ ${e.message}`, 'red');
-      render();
-      return;
+      errors++;
+      addLog(`⚠️ Polling ${act.id}.${sc.index+1}: ${e.message} (попытка ${errors}/3)`, 'red');
+      if (errors >= 3) {
+        sc.videoStatus = 'error';
+        sc.error = 'Видео polling: ' + e.message;
+        addLog(`❌ ${act.id}.${sc.index+1}: остановлен после 3 ошибок`, 'red');
+        render();
+        return;
+      }
+      // Wait extra before retry
+      await delay(5000);
     }
   }
   sc.videoStatus = 'error';
