@@ -967,9 +967,8 @@ window.genSceneVideo = async function(actId, sceneId) {
 
     const res = await api('/api/generate-video', payload);
 
-    if (res.status === 'done' && res.video) {
-      // Veo returns video directly
-      sc.videoUrl = 'data:video/mp4;base64,' + res.video;
+    if (res.status === 'done' && (res.video || res.videoUrl)) {
+      sc.videoUrl = res.videoUrl || ('data:video/mp4;base64,' + res.video);
       sc.videoStatus = 'done';
       addLog(`✅ ${act.id}.${sc.index+1}: видео готово`, 'green');
     } else if (res.taskId) {
