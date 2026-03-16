@@ -166,7 +166,7 @@ const API_BASE = localStorage.getItem('media_studio_api') || 'https://media-stud
 // STATE
 // ══════════════════════════════════════════════════════════════════════════════
 const state = {
-  step: 'home', // home | scenario | scenes | generate | export
+  step: 'home', // home | scenario | characters | scenes | generate | export
   apiStatus: { claude: false, gemini: false, elevenlabs: false },
   scenario: null,
   acts: [],
@@ -182,6 +182,8 @@ const state = {
   videoProvider: 'auto',
   videoProviders: [],
   finalVideoUrl: null,
+  // Characters (Disney mode)
+  characters: [], // { id, name, role, originalPhoto (base64/url), stylizedPhoto (base64/url), stylizedUrl, description }
 };
 
 const NEGATIVE_BASE = 'blurry, out of focus, low quality, jpeg artifacts, watermark, text overlay, signature, extra limbs, distorted face, bad anatomy, disfigured, duplicate, overexposed, underexposed, flat lighting, ugly, deformed';
@@ -189,6 +191,8 @@ const NEGATIVE_BASE = 'blurry, out of focus, low quality, jpeg artifacts, waterm
 const STYLE_TAGS = {
   cinematic: 'shot on ARRI Alexa, anamorphic 2.39:1, film grain, shallow depth of field, cinematic lighting',
   realistic: 'shot on Sony A7R5, 85mm f/1.4, photorealistic, 8K, ultra sharp, professional photography',
+  disney_pixar: 'Disney Pixar 3D animation style, vibrant colors, soft lighting, expressive characters, magical atmosphere, Pixar quality rendering, subsurface scattering on skin',
+  disney_classic: 'Classic Disney 2D animation style, hand-drawn look, warm colors, fairy tale atmosphere, watercolor backgrounds, golden era Disney',
   anime: 'anime key visual, studio quality illustration, vibrant colors, detailed linework',
   oil_painting: 'oil painting on canvas, impressionist technique, rich impasto, museum quality',
   watercolor: 'watercolor illustration, soft wet edges, paper texture, artistic',
@@ -309,6 +313,7 @@ function render() {
   const main = h('div', 'main');
   if (state.step === 'home') main.appendChild(renderHome());
   else if (state.step === 'scenario') main.appendChild(renderScenario());
+  else if (state.step === 'characters') main.appendChild(renderCharacters());
   else if (state.step === 'scenes') main.appendChild(renderScenes());
   else if (state.step === 'generate') main.appendChild(renderGenerate());
   else if (state.step === 'export') main.appendChild(renderExport());
@@ -325,9 +330,9 @@ function renderHeader() {
 
   if (state.step !== 'home') {
     const nav = h('nav', 'step-nav');
-    const steps = [['scenario','01 Сценарий'],['scenes','02 Сцены'],['generate','03 Генерация'],['export','04 Экспорт']];
+    const steps = [['scenario','01 Сценарий'],['characters','02 Персонажи'],['scenes','03 Сцены'],['generate','04 Генерация'],['export','05 Экспорт']];
     steps.forEach(([key, label]) => {
-      const available = key === 'scenario' || (key === 'scenes' && state.scenario) || (key === 'generate' && state.acts.length) || (key === 'export' && state.acts.some(a => a.scenes.some(s => s.status === 'done')));
+      const available = key === 'scenario' || (key === 'characters' && state.scenario) || (key === 'scenes' && state.scenario) || (key === 'generate' && state.acts.length) || (key === 'export' && state.acts.some(a => a.scenes.some(s => s.status === 'done')));
       const btn = h('button', `step-btn${state.step === key ? ' active' : available ? ' done' : ''}`, label, {
         onclick: () => { if (available) { state.step = key; render(); } },
         disabled: !available
@@ -641,7 +646,7 @@ function renderScenarioPreview() {
       <span class="act-num">ACT ${a.id}</span> <strong>${esc(a.title)}</strong>
       <div style="font-size:12px;color:var(--text3);margin-top:4px">${esc(a.purpose)}</div>
     </div>`).join('')}
-    <button class="btn-primary" style="margin-top:16px" onclick="goToScenes()">Далее → Сцены и промпты</button>
+    <button class="btn-primary" style="margin-top:16px" onclick="goToCharacters()">Далее → Персонажи</button>
   </div>`;
 }
 
@@ -673,6 +678,133 @@ window.goToScenes = function() {
   render();
 };
 
+window.goToCharacters = function() {
+  state.step = 'characters';
+  render();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 1.5: CHARACTERS — Upload photos, stylize, manage cast
+// ══════════════════════════════════════════════════════════════════════════════
+function renderCharacters() {
+  const wrap = h('div', 'fade-in');
+  const isDisney = state.style.startsWith('disney');
+  const styleLabel = state.style === 'disney_pixar' ? 'Disney Pixar 3D' : state.style === 'disney_classic' ? 'Disney Classic 2D' : STYLE_TAGS[state.style]?.split(',')[0] || state.style;
+
+  let charsHtml = '';
+  state.characters.forEach((ch, i) => {
+    charsHtml += `<div class="card" style="display:flex;gap:20px;align-items:flex-start">
+      <div style="display:flex;gap:12px;flex-shrink:0">
+        <div style="width:100px;height:100px;border-radius:12px;overflow:hidden;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center">
+          ${ch.originalPhoto ? `<img src="${ch.originalPhoto}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:28px">📷</span>'}
+        </div>
+        <div style="position:relative;width:100px;height:100px;border-radius:12px;overflow:hidden;background:var(--surface2);border:2px solid ${ch.stylizedPhoto ? 'var(--accent)' : 'var(--border)'};display:flex;align-items:center;justify-content:center">
+          ${ch.stylizedPhoto ? `<img src="${ch.stylizedPhoto}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:28px;color:var(--text3)">✨</span>'}
+          ${ch.stylizing ? '<div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center"><span class="spin" style="font-size:20px">◌</span></div>' : ''}
+        </div>
+      </div>
+      <div style="flex:1">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <input class="input" style="flex:1;font-weight:600" value="${esc(ch.name)}" placeholder="Имя персонажа" oninput="state.characters[${i}].name=this.value">
+          <button class="btn-danger" style="padding:6px 10px" onclick="state.characters.splice(${i},1);render()">✕</button>
+        </div>
+        <input class="input" style="margin-bottom:8px" value="${esc(ch.role || '')}" placeholder="Роль: мама, папа, дочка, главный герой..." oninput="state.characters[${i}].role=this.value">
+        <textarea class="textarea" rows="2" placeholder="Описание для AI: возраст, одежда, особенности..." oninput="state.characters[${i}].description=this.value">${esc(ch.description || '')}</textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          ${!ch.originalPhoto ? `<label class="btn-accent2" style="cursor:pointer"><input type="file" accept="image/*" style="display:none" onchange="uploadCharPhoto(${i},this.files[0])">📷 Загрузить фото</label>` : ''}
+          ${ch.originalPhoto && !ch.stylizedPhoto ? `<button class="btn-primary" style="font-size:12px;padding:8px 14px" onclick="stylizeChar(${i})">✨ Стилизовать → ${styleLabel}</button>` : ''}
+          ${ch.stylizedPhoto ? `<button class="btn-accent2" style="font-size:11px;padding:6px 10px" onclick="stylizeChar(${i})">↺ Перестилизовать</button>` : ''}
+          ${ch.originalPhoto ? `<button class="btn-ghost" style="font-size:11px;padding:6px 10px" onclick="state.characters[${i}].originalPhoto=null;state.characters[${i}].stylizedPhoto=null;render()">✕ Удалить фото</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  });
+
+  wrap.innerHTML = `
+    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='scenario';render()">← Сценарий</button></div>
+    <div class="section-head">
+      <div class="section-tag">// ЭТАП 02</div>
+      <h1 class="section-title">Персонажи</h1>
+      <p class="section-sub">Загрузи реальные фото → AI стилизует их в выбранном стиле. Персонажи будут использоваться во всех сценах.</p>
+    </div>
+    <div class="settings-bar">
+      <div class="settings-field"><div class="card-label">Стиль</div>
+        <select class="select" onchange="state.style=this.value;render()">
+          ${Object.entries({disney_pixar:'🏰 Disney Pixar 3D',disney_classic:'🎨 Disney Classic 2D',cinematic:'🎬 Кинематограф',realistic:'📸 Гиперреализм',anime:'🌸 Аниме',oil_painting:'🎨 Масло',watercolor:'💧 Акварель',digital_art:'💻 Digital Art'}).map(([k,v]) => `<option value="${k}" ${state.style===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn-ghost" onclick="addCharacter()">+ Добавить персонажа</button>
+      ${state.characters.length && state.characters.some(c => c.originalPhoto && !c.stylizedPhoto) ? `<button class="btn-primary" onclick="stylizeAll()">✨ Стилизовать всех</button>` : ''}
+    </div>
+    ${state.characters.length === 0 ? `
+      <div class="card" style="text-align:center;padding:48px">
+        <div style="font-size:48px;margin-bottom:16px">👨‍👩‍👧‍👦</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Добавь персонажей</div>
+        <div style="color:var(--text2);font-size:14px;margin-bottom:20px">Загрузи фото семьи или героев → AI превратит их в ${isDisney ? 'персонажей Disney' : 'стилизованных героев'}</div>
+        <button class="btn-primary" onclick="addCharacter()">+ Первый персонаж</button>
+      </div>
+    ` : charsHtml}
+    <div style="margin-top:28px;display:flex;gap:12px">
+      <button class="btn-primary" onclick="goToScenes()" ${!state.scenario ? 'disabled' : ''}>Далее → Сцены и промпты (${state.characters.filter(c=>c.stylizedPhoto||c.originalPhoto).length} персонажей)</button>
+      <button class="btn-ghost" onclick="goToScenes()">Пропустить</button>
+    </div>
+    <div id="chars-log"></div>`;
+  return wrap;
+}
+
+window.addCharacter = function() {
+  state.characters.push({ id: genId(), name: '', role: '', originalPhoto: null, stylizedPhoto: null, stylizedUrl: null, description: '', stylizing: false });
+  render();
+};
+
+window.uploadCharPhoto = function(idx, file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    state.characters[idx].originalPhoto = e.target.result;
+    state.characters[idx].stylizedPhoto = null;
+    render();
+  };
+  reader.readAsDataURL(file);
+};
+
+window.stylizeChar = async function(idx) {
+  const ch = state.characters[idx];
+  if (!ch.originalPhoto) return;
+  ch.stylizing = true;
+  render();
+  addLog(`✨ Стилизация "${ch.name || 'Персонаж ' + (idx+1)}"...`, 'accent');
+  try {
+    const base64 = ch.originalPhoto.split(',')[1];
+    const mime = ch.originalPhoto.split(';')[0].split(':')[1] || 'image/jpeg';
+    const res = await api('/api/stylize-photo', {
+      imageBase64: base64,
+      imageMime: mime,
+      style: state.style,
+      styleTags: STYLE_TAGS[state.style],
+      characterName: ch.name || 'character',
+      characterDesc: ch.description || '',
+      projectId: state.projectId || undefined
+    });
+    ch.stylizedPhoto = res.url || ('data:image/png;base64,' + res.image);
+    ch.stylizedUrl = res.url || null;
+    addLog(`✅ "${ch.name || 'Персонаж'}" стилизован!`, 'green');
+  } catch (e) {
+    addLog(`❌ Стилизация: ${e.message}`, 'red');
+  }
+  ch.stylizing = false;
+  render();
+};
+
+window.stylizeAll = async function() {
+  for (let i = 0; i < state.characters.length; i++) {
+    if (state.characters[i].originalPhoto && !state.characters[i].stylizedPhoto) {
+      await window.stylizeChar(i);
+      if (i < state.characters.length - 1) await delay(3000);
+    }
+  }
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 2: SCENES
 // ══════════════════════════════════════════════════════════════════════════════
@@ -682,14 +814,14 @@ function renderScenes() {
   const readyCount = allScenes.filter(s => s.promptStart).length;
 
   let html = `
-    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='scenario';render()">← Сценарий</button></div>
+    <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='characters';render()">← Персонажи</button></div>
     <div class="section-head">
-      <div class="section-tag">// ЭТАП 02</div>
+      <div class="section-tag">// ЭТАП 03</div>
       <h1 class="section-title">Сцены и промпты</h1>
-      <p class="section-sub">Агент прорабатывает персонажа, окружение и промпты. Всё редактируемо.</p>
+      <p class="section-sub">Агент прорабатывает персонажа, окружение и промпты. Всё редактируемо.${state.characters.length ? ` <span style="color:var(--accent)">Персонажей: ${state.characters.length}</span>` : ''}</p>
     </div>
     <div class="settings-bar">
-      <div class="settings-field"><div class="card-label">Стиль</div><select class="select" onchange="state.style=this.value">${Object.entries({cinematic:'Кинематограф',realistic:'Гиперреализм',anime:'Аниме',oil_painting:'Масло',watercolor:'Акварель',digital_art:'Digital Art'}).map(([k,v]) => `<option value="${k}" ${state.style===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="settings-field"><div class="card-label">Стиль</div><select class="select" onchange="state.style=this.value">${Object.entries({cinematic:'Кинематограф',realistic:'Гиперреализм',disney_pixar:'Disney Pixar 3D',disney_classic:'Disney Classic 2D',anime:'Аниме',oil_painting:'Масло',watercolor:'Акварель',digital_art:'Digital Art'}).map(([k,v]) => `<option value="${k}" ${state.style===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div class="settings-field"><div class="card-label">Формат</div><select class="select" onchange="state.aspectRatio=this.value"><option value="9:16" ${state.aspectRatio==='9:16'?'selected':''}>9:16 Shorts</option><option value="16:9" ${state.aspectRatio==='16:9'?'selected':''}>16:9 YouTube</option><option value="1:1">1:1 Квадрат</option></select></div>
       <div class="settings-field"><div class="card-label">Язык</div><select class="select" onchange="state.language=this.value">${[['ru','🇷🇺 Русский'],['en','🇺🇸 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch']].map(([k,v]) => `<option value="${k}" ${state.language===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <button class="btn-primary" id="btn-all-prompts" onclick="genAllPrompts()">✦ Все промпты</button>
@@ -769,7 +901,8 @@ window.genOnePrompt = async function(actId, sceneId) {
   try {
     const res = await api('/api/scene-prompts', {
       videoTitle: state.scenario.plan.title, act, scene,
-      style: state.style, styleTags: STYLE_TAGS[state.style], aspectRatio: state.aspectRatio, language: state.language
+      style: state.style, styleTags: STYLE_TAGS[state.style], aspectRatio: state.aspectRatio, language: state.language,
+      characters: state.characters.filter(c => c.name || c.description).map(c => ({ name: c.name, role: c.role, description: c.description }))
     });
     Object.assign(scene, res.data, { negativePrompt: NEGATIVE_BASE + (res.data.negativePrompt ? ', ' + res.data.negativePrompt : ''), status: 'idle' });
     addLog(`✅ Акт ${actId}, сцена ${scene.index+1}: готово`, 'green');
