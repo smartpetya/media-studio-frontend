@@ -184,7 +184,9 @@ const state = {
   finalVideoUrl: null,
   sceneDuration: 5,
   // Characters (Disney mode)
-  characters: [], // { id, name, role, originalPhoto (base64/url), stylizedPhoto (base64/url), stylizedUrl, description }
+  characters: [], // { id, name, role, originalPhoto, stylizedPhoto, stylizedUrl, description, charSheet: [{viewId, url, image}], sheetGenerating: false }
+  // Locations (per act)
+  locations: {}, // { [actId]: { prompt, url, image, generating: false } }
 };
 
 const NEGATIVE_BASE = 'blurry, out of focus, low quality, jpeg artifacts, watermark, text overlay, signature, extra limbs, distorted face, bad anatomy, disfigured, duplicate, overexposed, underexposed, flat lighting, ugly, deformed';
@@ -717,7 +719,7 @@ window.goToCharacters = function() {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-// STEP 1.5: CHARACTERS — Upload photos, stylize, manage cast
+// STEP 1.5: CHARACTERS — Upload photos, stylize, character sheets, locations
 // ══════════════════════════════════════════════════════════════════════════════
 function renderCharacters() {
   const wrap = h('div', 'fade-in');
@@ -726,6 +728,23 @@ function renderCharacters() {
 
   let charsHtml = '';
   state.characters.forEach((ch, i) => {
+    // Character sheet thumbnails
+    let sheetHtml = '';
+    if (ch.charSheet?.length) {
+      sheetHtml = `<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--accent);align-self:center;margin-right:4px">SHEET:</span>
+        ${ch.charSheet.map(v => `<div style="width:48px;height:48px;border-radius:8px;overflow:hidden;border:1px solid var(--accent);background:var(--surface2)">
+          <img src="${v.url || ('data:image/png;base64,' + v.image)}" style="width:100%;height:100%;object-fit:cover" title="${v.viewId}">
+        </div>`).join('')}
+      </div>`;
+    }
+    if (ch.sheetGenerating) {
+      sheetHtml = `<div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+        <span class="spin" style="font-size:14px">◌</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">Генерация Character Sheet...</span>
+      </div>`;
+    }
+
     charsHtml += `<div class="card" style="display:flex;gap:20px;align-items:flex-start">
       <div style="display:flex;gap:12px;flex-shrink:0">
         <div style="width:100px;height:100px;border-radius:12px;overflow:hidden;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center">
@@ -747,18 +766,48 @@ function renderCharacters() {
           ${!ch.originalPhoto ? `<label class="btn-accent2" style="cursor:pointer"><input type="file" accept="image/*" style="display:none" onchange="uploadCharPhoto(${i},this.files[0])">📷 Загрузить фото</label>` : ''}
           ${ch.originalPhoto && !ch.stylizedPhoto ? `<button class="btn-primary" style="font-size:12px;padding:8px 14px" onclick="stylizeChar(${i})">✨ Стилизовать → ${styleLabel}</button>` : ''}
           ${ch.stylizedPhoto ? `<button class="btn-accent2" style="font-size:11px;padding:6px 10px" onclick="stylizeChar(${i})">↺ Перестилизовать</button>` : ''}
-          ${ch.originalPhoto ? `<button class="btn-ghost" style="font-size:11px;padding:6px 10px" onclick="state.characters[${i}].originalPhoto=null;state.characters[${i}].stylizedPhoto=null;render()">✕ Удалить фото</button>` : ''}
+          ${ch.stylizedPhoto && !ch.charSheet?.length && !ch.sheetGenerating ? `<button class="btn-primary" style="font-size:12px;padding:8px 14px;background:var(--accent2);color:#000" onclick="generateCharSheet(${i})">🎭 Character Sheet (3 ракурса)</button>` : ''}
+          ${ch.charSheet?.length ? `<button class="btn-ghost" style="font-size:11px;padding:6px 10px" onclick="generateCharSheet(${i})">↺ Перегенерировать sheet</button>` : ''}
+          ${ch.originalPhoto ? `<button class="btn-ghost" style="font-size:11px;padding:6px 10px" onclick="state.characters[${i}].originalPhoto=null;state.characters[${i}].stylizedPhoto=null;state.characters[${i}].charSheet=[];render()">✕ Удалить фото</button>` : ''}
         </div>
+        ${sheetHtml}
       </div>
     </div>`;
   });
+
+  // Locations section
+  let locsHtml = '';
+  if (state.acts.length > 0) {
+    locsHtml = `<div style="margin-top:32px">
+      <div class="section-tag" style="margin-bottom:12px">// ЛОКАЦИИ (фоны для сцен)</div>
+      <div class="tip" style="margin-bottom:16px">Сгенерируй фоны/локации для каждого акта. Они будут использоваться как reference при генерации сцен — персонажи будут помещены в эти среды.</div>`;
+    state.acts.forEach(act => {
+      const loc = state.locations[act.id] || {};
+      locsHtml += `<div class="card" style="display:flex;gap:16px;align-items:flex-start">
+        <div style="width:120px;height:80px;border-radius:10px;overflow:hidden;background:var(--surface2);border:1px solid ${loc.url ? 'var(--accent2)' : 'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative">
+          ${loc.url ? `<img src="${loc.url}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:20px;color:var(--text3)">🏞</span>'}
+          ${loc.generating ? '<div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center"><span class="spin" style="font-size:16px">◌</span></div>' : ''}
+        </div>
+        <div style="flex:1">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:6px">Акт ${act.id}: ${esc(act.title || '')}</div>
+          <input class="input" style="margin-bottom:8px;font-size:13px" value="${esc(loc.prompt || act.visual_direction || '')}" placeholder="Описание локации: лес, замок, городская площадь..." oninput="if(!state.locations[${act.id}])state.locations[${act.id}]={};state.locations[${act.id}].prompt=this.value">
+          <div style="display:flex;gap:8px">
+            <button class="btn-accent2" style="font-size:11px;padding:6px 12px" onclick="generateLocation(${act.id})" ${loc.generating ? 'disabled' : ''}>${loc.url ? '↺ Перегенерировать' : '🏞 Сгенерировать фон'}</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    locsHtml += `<div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn-primary" style="font-size:12px;padding:8px 16px;background:var(--accent2);color:#000" onclick="generateAllLocations()">🏞 Все локации</button>
+    </div></div>`;
+  }
 
   wrap.innerHTML = `
     <div style="margin-bottom:16px"><button class="btn-back" onclick="state.step='scenario';render()">← Сценарий</button></div>
     <div class="section-head">
       <div class="section-tag">// ЭТАП 02</div>
-      <h1 class="section-title">Персонажи</h1>
-      <p class="section-sub">Загрузи реальные фото → AI стилизует их в выбранном стиле. Персонажи будут использоваться во всех сценах.</p>
+      <h1 class="section-title">Персонажи и локации</h1>
+      <p class="section-sub">Загрузи фото → стилизация → Character Sheet (3 ракурса). Также подготовь фоны/локации для каждого акта.</p>
     </div>
     <div class="settings-bar">
       <div class="settings-field"><div class="card-label">Стиль</div>
@@ -768,6 +817,7 @@ function renderCharacters() {
       </div>
       <button class="btn-ghost" onclick="addCharacter()">+ Добавить персонажа</button>
       ${state.characters.length && state.characters.some(c => c.originalPhoto && !c.stylizedPhoto) ? `<button class="btn-primary" onclick="stylizeAll()">✨ Стилизовать всех</button>` : ''}
+      ${state.characters.length && state.characters.some(c => c.stylizedPhoto && !c.charSheet?.length) ? `<button class="btn-primary" style="background:var(--accent2);color:#000" onclick="generateAllSheets()">🎭 Все Character Sheets</button>` : ''}
     </div>
     ${state.characters.length === 0 ? `
       <div class="card" style="text-align:center;padding:48px">
@@ -777,8 +827,9 @@ function renderCharacters() {
         <button class="btn-primary" onclick="addCharacter()">+ Первый персонаж</button>
       </div>
     ` : charsHtml}
+    ${locsHtml}
     <div style="margin-top:28px;display:flex;gap:12px">
-      <button class="btn-primary" onclick="goToScenes()" ${!state.scenario ? 'disabled' : ''}>Далее → Сцены и промпты (${state.characters.filter(c=>c.stylizedPhoto||c.originalPhoto).length} персонажей)</button>
+      <button class="btn-primary" onclick="goToScenes()" ${!state.scenario ? 'disabled' : ''}>Далее → Сцены и промпты (${state.characters.filter(c=>c.stylizedPhoto||c.originalPhoto).length} персонажей${Object.values(state.locations).filter(l=>l.url).length ? ', ' + Object.values(state.locations).filter(l=>l.url).length + ' локаций' : ''})</button>
       <button class="btn-ghost" onclick="goToScenes()">Пропустить</button>
     </div>
     <div id="chars-log"></div>`;
@@ -786,7 +837,7 @@ function renderCharacters() {
 }
 
 window.addCharacter = function() {
-  state.characters.push({ id: genId(), name: '', role: '', originalPhoto: null, stylizedPhoto: null, stylizedUrl: null, description: '', stylizing: false });
+  state.characters.push({ id: genId(), name: '', role: '', originalPhoto: null, stylizedPhoto: null, stylizedUrl: null, description: '', stylizing: false, charSheet: [], sheetGenerating: false });
   render();
 };
 
@@ -838,6 +889,100 @@ window.stylizeAll = async function() {
   }
 };
 
+// ── Character Sheet Generation ──
+window.generateCharSheet = async function(idx) {
+  const ch = state.characters[idx];
+  if (!ch.stylizedPhoto && !ch.stylizedUrl) {
+    addLog(`❌ Сначала стилизуйте "${ch.name || 'Персонаж'}"`, 'red');
+    return;
+  }
+  ch.sheetGenerating = true;
+  ch.charSheet = [];
+  render();
+  addLog(`🎭 Генерация Character Sheet для "${ch.name || 'Персонаж ' + (idx+1)}" (3 ракурса)...`, 'accent');
+  try {
+    let imgBase64, imgMime;
+    if (ch.stylizedUrl) {
+      // Server will download from URL
+      imgBase64 = null;
+    } else if (ch.stylizedPhoto?.startsWith('data:')) {
+      imgBase64 = ch.stylizedPhoto.split(',')[1];
+      imgMime = ch.stylizedPhoto.split(';')[0].split(':')[1] || 'image/png';
+    }
+    const res = await api('/api/character-sheet', {
+      imageBase64: imgBase64 || undefined,
+      imageUrl: ch.stylizedUrl || undefined,
+      imageMime: imgMime || 'image/png',
+      characterName: ch.name || 'Hero',
+      characterDesc: ch.description || '',
+      style: state.style,
+      styleTags: STYLE_TAGS[state.style],
+      projectId: state.projectId || undefined
+    });
+    ch.charSheet = (res.views || []).filter(v => !v.error);
+    const ok = ch.charSheet.length;
+    const fail = (res.views || []).filter(v => v.error).length;
+    addLog(`✅ Character Sheet: ${ok} ракурсов готово${fail ? `, ${fail} с ошибкой` : ''}`, 'green');
+  } catch (e) {
+    addLog(`❌ Character Sheet: ${e.message}`, 'red');
+  }
+  ch.sheetGenerating = false;
+  render();
+};
+
+window.generateAllSheets = async function() {
+  for (let i = 0; i < state.characters.length; i++) {
+    const ch = state.characters[i];
+    if (ch.stylizedPhoto && !ch.charSheet?.length) {
+      await window.generateCharSheet(i);
+      if (i < state.characters.length - 1) await delay(3000);
+    }
+  }
+};
+
+// ── Location Generation ──
+window.generateLocation = async function(actId) {
+  if (!state.locations[actId]) state.locations[actId] = {};
+  const loc = state.locations[actId];
+  const act = state.acts.find(a => a.id === actId);
+  if (!loc.prompt && act) loc.prompt = act.visual_direction || '';
+  if (!loc.prompt) {
+    addLog(`❌ Введите описание локации для Акта ${actId}`, 'red');
+    return;
+  }
+  loc.generating = true;
+  render();
+  addLog(`🏞 Генерация локации для Акта ${actId}...`, 'accent');
+  try {
+    const res = await api('/api/generate-location', {
+      prompt: loc.prompt,
+      style: state.style,
+      styleTags: STYLE_TAGS[state.style],
+      aspectRatio: state.aspectRatio,
+      projectId: state.projectId || undefined,
+      actId: String(actId),
+      locationName: act?.title || ''
+    });
+    loc.url = res.url || ('data:image/png;base64,' + res.image);
+    loc.image = res.image;
+    addLog(`✅ Локация для Акта ${actId} готова!`, 'green');
+  } catch (e) {
+    addLog(`❌ Локация: ${e.message}`, 'red');
+  }
+  loc.generating = false;
+  render();
+};
+
+window.generateAllLocations = async function() {
+  for (const act of state.acts) {
+    if (!state.locations[act.id]) state.locations[act.id] = { prompt: act.visual_direction || '' };
+    if (!state.locations[act.id].url) {
+      await window.generateLocation(act.id);
+      await delay(5000);
+    }
+  }
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 2: SCENES
 // ══════════════════════════════════════════════════════════════════════════════
@@ -851,7 +996,7 @@ function renderScenes() {
     <div class="section-head">
       <div class="section-tag">// ЭТАП 03</div>
       <h1 class="section-title">Сцены и промпты</h1>
-      <p class="section-sub">Агент прорабатывает персонажа, окружение и промпты. Всё редактируемо.${state.characters.length ? ` <span style="color:var(--accent)">Персонажей: ${state.characters.length}</span>` : ''}</p>
+      <p class="section-sub">Агент прорабатывает персонажа, окружение и промпты. Всё редактируемо.${state.characters.length ? ` <span style="color:var(--accent)">Персонажей: ${state.characters.length}${state.characters.some(c => c.charSheet?.length) ? ' (с sheets)' : ''}</span>` : ''}${Object.values(state.locations).filter(l=>l.url).length ? ` <span style="color:var(--accent2)">Локаций: ${Object.values(state.locations).filter(l=>l.url).length}</span>` : ''}</p>
     </div>
     <div class="settings-bar">
       <div class="settings-field"><div class="card-label">Стиль</div><select class="select" onchange="state.style=this.value">${Object.entries({cinematic:'Кинематограф',realistic:'Гиперреализм',disney_pixar:'Disney Pixar 3D',disney_classic:'Disney Classic 2D',anime:'Аниме',oil_painting:'Масло',watercolor:'Акварель',digital_art:'Digital Art'}).map(([k,v]) => `<option value="${k}" ${state.style===k?'selected':''}>${v}</option>`).join('')}</select></div>
@@ -947,8 +1092,65 @@ window.genOnePrompt = async function(actId, sceneId) {
 };
 
 window.genAllPrompts = async function() {
-  $('btn-all-prompts').disabled = true; $('btn-all-prompts').innerHTML = '<span class="spin">◌</span> Генерирую...';
-  for (const act of state.acts) for (const sc of act.scenes) await window.genOnePrompt(act.id, sc.id);
+  const btn = $('btn-all-prompts');
+  btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Генерирую...';
+  
+  const processedActs = []; // track previous acts for context
+  
+  for (const act of state.acts) {
+    addLog(`🧠 Акт ${act.id} "${act.title}": промпты для ${act.scenes.length} сцен...`, 'accent');
+    act.scenes.forEach(sc => { sc.status = 'generating_prompts'; });
+    render();
+    
+    try {
+      const res = await api('/api/act-prompts', {
+        videoTitle: state.scenario.plan.title,
+        logline: state.scenario.plan.logline || '',
+        act,
+        scenes: act.scenes,
+        style: state.style,
+        styleTags: STYLE_TAGS[state.style],
+        aspectRatio: state.aspectRatio,
+        language: state.language,
+        characters: state.characters.filter(c => c.name || c.description).map(c => ({ name: c.name, role: c.role, description: c.description })),
+        previousActs: processedActs
+      });
+      
+      // Apply results to scenes
+      const results = res.scenes || [];
+      act.scenes.forEach((sc, i) => {
+        if (results[i]) {
+          Object.assign(sc, results[i], {
+            negativePrompt: NEGATIVE_BASE + (results[i].negativePrompt ? ', ' + results[i].negativePrompt : ''),
+            status: 'idle'
+          });
+        } else {
+          sc.status = 'error';
+          sc.error = 'Нет данных от AI для этой сцены';
+        }
+      });
+      
+      // Save this act's voiceScripts as context for next acts
+      processedActs.push({
+        id: act.id,
+        title: act.title,
+        scenes: act.scenes.map(sc => ({ voiceScript: sc.voiceScript }))
+      });
+      
+      addLog(`✅ Акт ${act.id}: ${results.length} сцен готово`, 'green');
+    } catch (e) {
+      act.scenes.forEach(sc => { sc.status = 'error'; sc.error = e.message; });
+      addLog(`❌ Акт ${act.id}: ${e.message}`, 'red');
+      // Fallback: try one-by-one
+      addLog(`↺ Акт ${act.id}: пробую по одной...`, 'accent');
+      for (const sc of act.scenes) {
+        if (sc.status === 'error') await window.genOnePrompt(act.id, sc.id);
+      }
+    }
+    render();
+  }
+  
+  btn.disabled = false; btn.innerHTML = '✦ Все промпты';
   render();
 };
 
@@ -1071,21 +1273,36 @@ window.runGenerate = async function() {
 };
 
 async function processScene(act, sc) {
-  // ── Build character references for image generation ──
-  const charRefs = state.characters
-    .filter(c => c.stylizedPhoto || c.stylizedUrl)
-    .map(c => {
-      if (c.stylizedUrl) return { url: c.stylizedUrl };
-      if (c.stylizedPhoto?.startsWith('data:')) return { base64: c.stylizedPhoto.split(',')[1], mime: c.stylizedPhoto.split(';')[0].split(':')[1] };
-      return null;
-    })
-    .filter(Boolean);
+  // ── Build character references: prefer charSheet views, fallback to stylized photo ──
+  const charRefs = [];
+  state.characters.filter(c => c.stylizedPhoto || c.stylizedUrl || c.charSheet?.length).forEach(c => {
+    // If character has a sheet, use sheet views (better consistency)
+    if (c.charSheet?.length) {
+      c.charSheet.forEach(v => {
+        if (v.url) charRefs.push({ url: v.url });
+        else if (v.image) charRefs.push({ base64: v.image, mime: 'image/png' });
+      });
+    } else {
+      // Fallback to single stylized photo
+      if (c.stylizedUrl) charRefs.push({ url: c.stylizedUrl });
+      else if (c.stylizedPhoto?.startsWith('data:')) charRefs.push({ base64: c.stylizedPhoto.split(',')[1], mime: c.stylizedPhoto.split(';')[0].split(':')[1] });
+    }
+  });
+
+  // ── Build location reference for this act ──
+  const loc = state.locations[act.id];
+  let locationRef = null;
+  if (loc?.url) {
+    locationRef = { url: loc.url };
+  }
+
+  const refCount = charRefs.length + (locationRef ? 1 : 0);
   
   // ── IMAGES ──
   sc.status = 'generating_images';
   sc.error = null;
   render();
-  addLog(`🎨 ${act.id}.${sc.index+1}: начальный кадр...${charRefs.length ? ` (${charRefs.length} референсов)` : ''}`, 'accent');
+  addLog(`🎨 ${act.id}.${sc.index+1}: начальный кадр...${refCount ? ` (${charRefs.length} char + ${locationRef ? 1 : 0} loc refs)` : ''}`, 'accent');
 
   let imageSuccess = false;
   try {
@@ -1096,12 +1313,12 @@ async function processScene(act, sc) {
       projectId: state.projectId || undefined,
       sceneId: sc.id,
       imageType: 'start',
-      referenceImages: charRefs.length ? charRefs : undefined
+      referenceImages: charRefs.length ? charRefs : undefined,
+      locationImage: locationRef || undefined
     });
     sc.imageStartUrl = r1.url || ('data:image/png;base64,' + r1.image);
 
     // End frame: only generate for Veo (supports first+last frame interpolation)
-    // Skip for Runway/Kling to save ~$0.04 per scene
     const needsEndFrame = state.videoProvider === 'veo' || state.videoProvider === 'auto';
     if (needsEndFrame && sc.promptEnd && sc.promptEnd !== sc.promptStart) {
       addLog(`⏳ Пауза 5 сек...`, '');
@@ -1114,18 +1331,18 @@ async function processScene(act, sc) {
         projectId: state.projectId || undefined,
         sceneId: sc.id,
         imageType: 'end',
-        referenceImages: charRefs.length ? charRefs : undefined
+        referenceImages: charRefs.length ? charRefs : undefined,
+        locationImage: locationRef || undefined
       });
       sc.imageEndUrl = r2.url || ('data:image/png;base64,' + r2.image);
     } else {
-      sc.imageEndUrl = null; // No end frame needed
+      sc.imageEndUrl = null;
       addLog(`⏩ ${act.id}.${sc.index+1}: конечный кадр пропущен (${state.videoProvider})`, '');
     }
     
     addLog(`✅ ${act.id}.${sc.index+1}: кадры готовы`, 'green');
     imageSuccess = true;
   } catch (e) {
-    // [FIX #2] Only set error, don't block voice generation
     addLog(`❌ Фото: ${e.message}`, 'red');
     sc.error = 'Ошибка фото: ' + e.message;
   }
