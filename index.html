@@ -1038,11 +1038,21 @@ window.runGenerate = async function() {
 };
 
 async function processScene(act, sc) {
-  // ── IMAGES (2K config via imageConfig, projectId for Supabase storage) ──
+  // ── Build character references for image generation ──
+  const charRefs = state.characters
+    .filter(c => c.stylizedPhoto || c.stylizedUrl)
+    .map(c => {
+      if (c.stylizedUrl) return { url: c.stylizedUrl };
+      if (c.stylizedPhoto?.startsWith('data:')) return { base64: c.stylizedPhoto.split(',')[1], mime: c.stylizedPhoto.split(';')[0].split(':')[1] };
+      return null;
+    })
+    .filter(Boolean);
+  
+  // ── IMAGES ──
   sc.status = 'generating_images';
-  sc.error = null; // [FIX #2] Clear previous errors
+  sc.error = null;
   render();
-  addLog(`🎨 ${act.id}.${sc.index+1}: начальный кадр...`, 'accent');
+  addLog(`🎨 ${act.id}.${sc.index+1}: начальный кадр...${charRefs.length ? ` (${charRefs.length} референсов)` : ''}`, 'accent');
 
   let imageSuccess = false;
   try {
@@ -1050,26 +1060,35 @@ async function processScene(act, sc) {
       prompt: sc.promptStart,
       negativePrompt: sc.negativePrompt,
       aspectRatio: state.aspectRatio,
-      projectId: state.projectId || undefined, // [FIX #7] Supabase storage
+      projectId: state.projectId || undefined,
       sceneId: sc.id,
-      imageType: 'start'
+      imageType: 'start',
+      referenceImages: charRefs.length ? charRefs : undefined
     });
     sc.imageStartUrl = r1.url || ('data:image/png;base64,' + r1.image);
 
-    // [FIX #3] Delay between two image gens for same scene
-    addLog(`⏳ Пауза 5 сек...`, '');
-    await delay(5000);
-
-    addLog(`🎨 ${act.id}.${sc.index+1}: конечный кадр...`, 'accent');
-    const r2 = await api('/api/generate-image', {
-      prompt: sc.promptEnd || sc.promptStart,
-      negativePrompt: sc.negativePrompt,
-      aspectRatio: state.aspectRatio,
-      projectId: state.projectId || undefined,
-      sceneId: sc.id,
-      imageType: 'end'
-    });
-    sc.imageEndUrl = r2.url || ('data:image/png;base64,' + r2.image);
+    // End frame: only generate for Veo (supports first+last frame interpolation)
+    // Skip for Runway/Kling to save ~$0.04 per scene
+    const needsEndFrame = state.videoProvider === 'veo' || state.videoProvider === 'auto';
+    if (needsEndFrame && sc.promptEnd && sc.promptEnd !== sc.promptStart) {
+      addLog(`⏳ Пауза 5 сек...`, '');
+      await delay(5000);
+      addLog(`🎨 ${act.id}.${sc.index+1}: конечный кадр (для Veo)...`, 'accent');
+      const r2 = await api('/api/generate-image', {
+        prompt: sc.promptEnd,
+        negativePrompt: sc.negativePrompt,
+        aspectRatio: state.aspectRatio,
+        projectId: state.projectId || undefined,
+        sceneId: sc.id,
+        imageType: 'end',
+        referenceImages: charRefs.length ? charRefs : undefined
+      });
+      sc.imageEndUrl = r2.url || ('data:image/png;base64,' + r2.image);
+    } else {
+      sc.imageEndUrl = null; // No end frame needed
+      addLog(`⏩ ${act.id}.${sc.index+1}: конечный кадр пропущен (${state.videoProvider})`, '');
+    }
+    
     addLog(`✅ ${act.id}.${sc.index+1}: кадры готовы`, 'green');
     imageSuccess = true;
   } catch (e) {
@@ -1138,6 +1157,15 @@ window.genSceneVideo = async function(actId, sceneId) {
       payload.imageBase64 = sc.imageStartUrl.split(',')[1];
     } else {
       payload.imageUrl = sc.imageStartUrl;
+    }
+    // Pass end frame for Veo first+last frame interpolation
+    if (sc.imageEndUrl) {
+      const isEndBase64 = sc.imageEndUrl.startsWith('data:');
+      if (isEndBase64) {
+        payload.imageEndBase64 = sc.imageEndUrl.split(',')[1];
+      } else {
+        payload.imageEndUrl = sc.imageEndUrl;
+      }
     }
 
     const res = await api('/api/generate-video', payload);
