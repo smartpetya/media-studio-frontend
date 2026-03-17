@@ -182,6 +182,7 @@ const state = {
   videoProvider: 'auto',
   videoProviders: [],
   finalVideoUrl: null,
+  sceneDuration: 5,
   // Characters (Disney mode)
   characters: [], // { id, name, role, originalPhoto (base64/url), stylizedPhoto (base64/url), stylizedUrl, description }
 };
@@ -627,9 +628,39 @@ function renderScenario() {
       <div class="card"><div class="card-label">Вектор / Настроение</div><textarea class="textarea" id="inp-vector" rows="4" placeholder="Вдохновляющее и кинематографичное...">${state.scenario?.vector || ''}</textarea></div>
     </div>
     <div class="settings-bar">
-      <div class="settings-field"><div class="card-label">Актов</div><select class="select" id="inp-acts">${[2,3,4,5,6,7].map(n => `<option value="${n}" ${n===4?'selected':''}>${n} актов</option>`).join('')}</select></div>
-      <div class="settings-field"><div class="card-label">Сцен на акт</div><select class="select" id="inp-scenes">${[2,3,4,5,6].map(n => `<option value="${n}" ${n===3?'selected':''}>${n} сцены</option>`).join('')}</select></div>
+      <div class="settings-field"><div class="card-label">Актов</div><select class="select" id="inp-acts">${[1,2,3,4,5,6,7,8,10,12,15].map(n => `<option value="${n}" ${n===4?'selected':''}>${n}</option>`).join('')}</select></div>
+      <div class="settings-field"><div class="card-label">Сцен на акт</div><select class="select" id="inp-scenes">${[1,2,3,4,5,6,8,10].map(n => `<option value="${n}" ${n===3?'selected':''}>${n}</option>`).join('')}</select></div>
+      <div class="settings-field"><div class="card-label">Сек/сцена</div><select class="select" id="inp-dur">${[3,4,5,6,8,10].map(n => `<option value="${n}" ${n===5?'selected':''}>${n}с</option>`).join('')}</select></div>
       <button class="btn-primary" id="btn-gen-scenario" onclick="genScenario()">Сгенерировать сценарий →</button>
+    </div>
+    <div id="cost-estimate" style="margin-bottom:16px"></div>
+    <script>
+      function updateEstimate() {
+        const a = +document.getElementById('inp-acts')?.value || 4;
+        const s = +document.getElementById('inp-scenes')?.value || 3;
+        const d = +document.getElementById('inp-dur')?.value || 5;
+        const total = a * s;
+        const dur = total * d;
+        const min = Math.floor(dur / 60);
+        const sec = dur % 60;
+        const costPhoto = total * 0.039;
+        const costVoice = 0;
+        const costScenario = 0.015 + total * 0.02;
+        const costVideoVeo = total * d * 0.15;
+        const costVideoRunway = total * d * 0.07;
+        const costVideoKling = total * d * 0.03;
+        const el = document.getElementById('cost-estimate');
+        if (el) el.innerHTML = '<div class="tip" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">' +
+          '<span>📊 <strong>' + total + ' сцен</strong> · ' + (min ? min + ' мин ' : '') + sec + ' сек</span>' +
+          '<span>🎨 Фото: ~$' + costPhoto.toFixed(2) + '</span>' +
+          '<span>🎬 Видео: ~$' + costVideoKling.toFixed(2) + ' (Kling) / $' + costVideoRunway.toFixed(2) + ' (Runway) / $' + costVideoVeo.toFixed(2) + ' (Veo)</span>' +
+          '</div>';
+      }
+      document.getElementById('inp-acts')?.addEventListener('change', updateEstimate);
+      document.getElementById('inp-scenes')?.addEventListener('change', updateEstimate);
+      document.getElementById('inp-dur')?.addEventListener('change', updateEstimate);
+      setTimeout(updateEstimate, 100);
+    </script>
     </div>
     <div id="scenario-error"></div>
     ${state.scenario ? renderScenarioPreview() : ''}
@@ -657,10 +688,14 @@ window.genScenario = async function() {
   btn.disabled = true; btn.innerHTML = '<span class="spin">◌</span> Думаю...';
   $('scenario-error').innerHTML = '';
   try {
+    const actCount = +$('inp-acts')?.value || 4;
+    const scenesPerAct = +$('inp-scenes')?.value || 3;
+    const sceneDur = +$('inp-dur')?.value || 5;
     const res = await api('/api/scenario', {
       topic, competitors: $('inp-comp')?.value, vector: $('inp-vector')?.value,
-      actCount: +$('inp-acts')?.value || 4, scenesPerAct: +$('inp-scenes')?.value || 3
+      actCount, scenesPerAct, sceneDuration: sceneDur
     });
+    state.sceneDuration = sceneDur;
     state.scenario = { topic, competitors: $('inp-comp')?.value, vector: $('inp-vector')?.value, plan: res.data };
     render();
   } catch (e) {
@@ -670,9 +705,10 @@ window.genScenario = async function() {
 
 window.goToScenes = function() {
   const plan = state.scenario.plan;
+  const dur = state.sceneDuration || 5;
   state.acts = plan.acts.map(a => ({
     ...a, expanded: true,
-    scenes: Array.from({ length: a.scenes_count }, (_, i) => makeScene(a.id, i))
+    scenes: Array.from({ length: a.scenes_count }, (_, i) => ({ ...makeScene(a.id, i), duration: dur }))
   }));
   state.step = 'scenes';
   render();
